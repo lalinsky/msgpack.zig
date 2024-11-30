@@ -1,6 +1,28 @@
 # Zig library for working with msgpack messages
 
-Simple usage:
+## Installation
+
+1) Add msgpack.zig as a dependency in your `build.zig.zon`:
+
+```bash
+zig fetch --save git+https://github.com/lalinsky/msgpack.zig#main
+```
+
+2) In your `build.zig`, add the `msgpack` module as a dependency you your program:
+
+```zig
+const msgpack = b.dependency("msgpack", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+// the executable from your call to b.addExecutable(...)
+exe.root_module.addImport("msgpack", httpz.module("msgpack"));
+```
+
+## Usage
+
+Basic encoding and decoding:
 
 ```zig
 const std = @import("std");
