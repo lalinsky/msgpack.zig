@@ -48,7 +48,7 @@ std.debug.assert(std.mem.eql(u8, decoded.name, "John"));
 std.debug.assert(decoded.age == 20);
 ```
 
-Change the default format from using field names to field indexes:
+Change the default format from using field names to field indexes for more compact messages.
 
 ```zig
 const std = @import("std");
@@ -64,7 +64,45 @@ const Message = struct {
 };
 ```
 
-Completely custom format:
+You can also use field name prefixes:
+
+```
+const std = @import("std");
+const msgpack = @import("msgpack");
+
+const Message = struct {
+    name: []const u8,
+    age: u8,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+```
+
+Both options have the disadvantage that changing the fields in the struct will have impact on the encoded message.
+You can also use custom protobuf-like field keys to ensure binary compatibility even after changing the struct:
+
+```zig
+const std = @import("std");
+const msgpack = @import("msgpack");
+
+const Message = struct {
+    items: []u32,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .custom } };
+    }
+
+    pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
+        return switch (field) {
+            .items => 1,
+        };
+    }
+};
+```
+
+Or you can use a completely custom format:
 
 ```zig
 const std = @import("std");

@@ -33,6 +33,7 @@ pub const StructAsMapOptions = struct {
         field_name,
         field_name_prefix: u8,
         field_index,
+        custom,
     },
     omit_nulls: bool = true,
     omit_defaults: bool = false,
@@ -89,9 +90,10 @@ fn strPrefix(src: []const u8, len: usize) []const u8 {
     return src[0..@min(src.len, len)];
 }
 
-pub fn packStructAsMap(writer: anytype, comptime T: type, value: T, opts: StructAsMapOptions) !void {
+pub fn packStructAsMap(writer: anytype, comptime T: type, value: T, comptime opts: StructAsMapOptions) !void {
     const type_info = @typeInfo(T);
     const fields = type_info.Struct.fields;
+    const FieldEnum = std.meta.FieldEnum(T);
 
     try packMapHeader(writer, countUsedStructFields(fields, value, opts));
 
@@ -107,13 +109,17 @@ pub fn packStructAsMap(writer: anytype, comptime T: type, value: T, opts: Struct
                 .field_name_prefix => |prefix| {
                     try packString(writer, strPrefix(field.name, prefix));
                 },
+                .custom => {
+                    const key = comptime T.msgpackFieldKey(@field(FieldEnum, field.name));
+                    try packAny(writer, @TypeOf(key), key);
+                },
             }
             try packAny(writer, field.type, @field(value, field.name));
         }
     }
 }
 
-pub fn packStructAsArray(writer: anytype, comptime T: type, value: T, opts: StructAsArrayOptions) !void {
+pub fn packStructAsArray(writer: anytype, comptime T: type, value: T, comptime opts: StructAsArrayOptions) !void {
     const type_info = @typeInfo(T);
     const fields = type_info.Struct.fields;
 
@@ -139,7 +145,7 @@ pub fn packStruct(writer: anytype, comptime T: type, value_or_maybe_null: T) !vo
     if (has_custom_write_fn) {
         return try value.msgpackWrite(packer(writer));
     } else {
-        const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
+        const format = comptime if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
         switch (format) {
             .as_map => |opts| {
                 return packStructAsMap(writer, Type, value, opts);
@@ -151,7 +157,7 @@ pub fn packStruct(writer: anytype, comptime T: type, value_or_maybe_null: T) !vo
     }
 }
 
-pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime T: type, opts: StructAsMapOptions) !T {
+pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsMapOptions) !T {
     const len = if (@typeInfo(T) == .Optional)
         try unpackMapHeader(reader, ?u16) orelse return null
     else
@@ -160,6 +166,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
     const Type = NonOptional(T);
     const type_info = @typeInfo(Type);
     const fields = type_info.Struct.fields;
+    const FieldEnum = std.meta.FieldEnum(T);
 
     var fields_seen = std.bit_set.StaticBitSet(fields.len).initEmpty();
 
@@ -206,6 +213,19 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
                     return error.UnknownStructField;
                 }
             },
+            .custom => {
+                const KeyType = comptime @typeInfo(T.msgpackFieldKey).Fn.return_type.?;
+                const key = try unpackAny(reader, allocator, KeyType);
+                inline for (fields, 0..) |field, i| {
+                    if (T.msgpackFieldKey(@field(FieldEnum, field.name)) == key) {
+                        fields_seen.set(i);
+                        @field(result, field.name) = try unpackAny(reader, allocator, field.type);
+                        break;
+                    }
+                } else {
+                    return error.UnknownStructField;
+                }
+            },
         }
     }
 
@@ -229,7 +249,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
     return result;
 }
 
-pub fn unpackStructAsArray(reader: anytype, allocator: std.mem.Allocator, comptime T: type, opts: StructAsArrayOptions) !T {
+pub fn unpackStructAsArray(reader: anytype, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsArrayOptions) !T {
     const len = if (@typeInfo(T) == .Optional)
         try unpackArrayHeader(reader, ?u16) orelse return null
     else
@@ -260,7 +280,7 @@ pub fn unpackStruct(reader: anytype, allocator: std.mem.Allocator, comptime T: t
     if (has_custom_read_fn) {
         return try T.msgpackRead(unpacker(reader, allocator));
     } else {
-        const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
+        const format = comptime if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
         switch (format) {
             .as_map => |opts| {
                 return try unpackStructAsMap(reader, allocator, T, opts);
@@ -296,7 +316,7 @@ test "writeStruct: map_by_index" {
     }, stream.getWritten());
 }
 
-test "writeStruct: map_by_name" {
+test "writeStruct: map by field_name" {
     const Msg = struct {
         a: u32,
         b: u64,
@@ -316,6 +336,61 @@ test "writeStruct: map_by_name" {
         0xa1, 'a', // "a"
         0x01, // value: u32(1)
         0xa1, 'b', // "b"
+        0x02, // value: i32(2)
+    }, stream.getWritten());
+}
+
+test "writeStruct: map by field_name_prefix" {
+    const Msg = struct {
+        a: u32,
+        b: u64,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+        }
+    };
+    const msg = Msg{ .a = 1, .b = 2 };
+
+    var buffer: [100]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try packStruct(stream.writer(), Msg, msg);
+
+    try std.testing.expectEqualSlices(u8, &.{
+        0x82, // map with 2 elements
+        0xa1, 'a', // "a"
+        0x01, // value: u32(1)
+        0xa1, 'b', // "b"
+        0x02, // value: i32(2)
+    }, stream.getWritten());
+}
+
+test "writeStruct: map by custom key" {
+    const Msg = struct {
+        a: u32,
+        b: u64,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .custom } };
+        }
+
+        pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
+            return switch (field) {
+                .a => 101,
+                .b => 102,
+            };
+        }
+    };
+    const msg = Msg{ .a = 1, .b = 2 };
+
+    var buffer: [100]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try packStruct(stream.writer(), Msg, msg);
+
+    try std.testing.expectEqualSlices(u8, &.{
+        0x82, // map with 2 elements
+        101, // key: 101
+        0x01, // value: u32(1)
+        102, // key: 102
         0x02, // value: i32(2)
     }, stream.getWritten());
 }
