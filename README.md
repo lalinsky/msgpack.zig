@@ -48,7 +48,7 @@ std.debug.assert(std.mem.eql(u8, decoded.name, "John"));
 std.debug.assert(decoded.age == 20);
 ```
 
-Change the default format from using field names to field indexes for more compact messages.
+The encoded message will use field names as keys to encode the message. In order to generate more compact messages, you can change the format to use field indexes:
 
 ```zig
 const std = @import("std");
@@ -64,9 +64,9 @@ const Message = struct {
 };
 ```
 
-You can also use field name prefixes:
+Or you can also use field name prefixes:
 
-```
+```zig
 const std = @import("std");
 const msgpack = @import("msgpack");
 
@@ -80,8 +80,8 @@ const Message = struct {
 };
 ```
 
-Both options have the disadvantage that changing the fields in the struct will have impact on the encoded message.
-You can also use custom protobuf-like field keys to ensure binary compatibility even after changing the struct:
+Both options have the disadvantage that changing the fields in the struct will have impact on the encoded message, so you need to be careful about backwarads compatibility.
+You can also use custom protobuf-like field keys to ensure full compatibility even after changing the struct:
 
 ```zig
 const std = @import("std");
