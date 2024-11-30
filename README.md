@@ -1,5 +1,13 @@
 # Zig library for working with msgpack messages
 
+This is a Zig library for encoding/decoding [msgpack](https://msgpack.org/) messages based on static types.
+
+You can define a struct type and then serialize it using a stable binary format that is readable with any
+language that supports msgpack. This is useful for data files and network APIs. You can use it like protobuf,
+but with the advantage that you use Zig's type system instead of a foreign schema language.
+
+There are multiple options on how to encode struct fields, in order to generate compact messages, see below for details.
+
 ## Installation
 
 1) Add msgpack.zig as a dependency in your `build.zig.zon`:
