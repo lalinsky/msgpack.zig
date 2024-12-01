@@ -25,7 +25,7 @@ const msgpack = b.dependency("msgpack", .{
 });
 
 // the executable from your call to b.addExecutable(...)
-exe.root_module.addImport("msgpack", httpz.module("msgpack"));
+exe.root_module.addImport("msgpack", msgpack.module("msgpack"));
 ```
 
 ## Usage
