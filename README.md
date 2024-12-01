@@ -96,7 +96,8 @@ const std = @import("std");
 const msgpack = @import("msgpack");
 
 const Message = struct {
-    items: []u32,
+    name: []const u8,
+    age: u8,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .custom } };
@@ -104,7 +105,8 @@ const Message = struct {
 
     pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
         return switch (field) {
-            .items => 1,
+            .name => 1,
+            .age => 2,
         };
     }
 };
