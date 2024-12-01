@@ -52,8 +52,8 @@ try msgpack.encode(Message{
 const decoded = try msgpack.decodeFromSlice(Message, allocator, buffer.items);
 defer decoded.deinit();
 
-std.debug.assert(std.mem.eql(u8, decoded.name, "John"));
-std.debug.assert(decoded.age == 20);
+std.debug.assert(std.mem.eql(u8, decoded.value.name, "John"));
+std.debug.assert(decoded.value.age == 20);
 ```
 
 The encoded message will use field names as keys to encode the message. In order to generate more compact messages, you can change the format to use field indexes:
