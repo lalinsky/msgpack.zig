@@ -71,8 +71,8 @@ pub fn packMap(writer: anytype, value_or_maybe_null: anytype) !void {
 
     var iter = value.iterator();
     while (iter.next()) |entry| {
-        try packAny(writer, @TypeOf(entry.key_ptr.*), entry.key_ptr.*);
-        try packAny(writer, @TypeOf(entry.value_ptr.*), entry.value_ptr.*);
+        try packAny(writer, entry.key_ptr.*);
+        try packAny(writer, entry.value_ptr.*);
     }
 }
 

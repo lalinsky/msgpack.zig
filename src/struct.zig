@@ -111,10 +111,10 @@ pub fn packStructAsMap(writer: anytype, comptime T: type, value: T, comptime opt
                 },
                 .custom => {
                     const key = comptime T.msgpackFieldKey(@field(FieldEnum, field.name));
-                    try packAny(writer, @TypeOf(key), key);
+                    try packAny(writer, key);
                 },
             }
-            try packAny(writer, field.type, @field(value, field.name));
+            try packAny(writer, @field(value, field.name));
         }
     }
 }
@@ -126,7 +126,7 @@ pub fn packStructAsArray(writer: anytype, comptime T: type, value: T, comptime o
     try packArrayHeader(writer, fields.len);
 
     inline for (fields) |field| {
-        try packAny(writer, field.type, @field(value, field.name));
+        try packAny(writer, @field(value, field.name));
     }
 
     _ = opts;

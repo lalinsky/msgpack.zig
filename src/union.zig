@@ -69,7 +69,7 @@ pub fn packUnionAsMap(writer: anytype, comptime T: type, value: T, opts: UnionAs
                     try packString(writer, strPrefix(field.name, prefix));
                 },
             }
-            try packAny(writer, field.type, @field(value, field.name));
+            try packAny(writer, @field(value, field.name));
         }
     }
 }

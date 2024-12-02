@@ -68,7 +68,7 @@ pub fn packArray(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
     try packArrayHeader(writer, value.len);
 
     for (value) |item| {
-        try packAny(writer, @TypeOf(item), item);
+        try packAny(writer, item);
     }
 }
 

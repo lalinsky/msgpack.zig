@@ -144,8 +144,8 @@ pub fn Packer(comptime Writer: type) type {
             return packUnion(self.writer, T, value);
         }
 
-        pub fn write(self: Self, comptime T: type, value: T) !void {
-            return packAny(self.writer, T, value);
+        pub fn write(self: Self, value: anytype) !void {
+            return packAny(self.writer, value);
         }
     };
 }
@@ -247,7 +247,7 @@ pub fn unpacker(reader: anytype, allocator: ?Allocator) Unpacker(@TypeOf(reader)
 }
 
 pub fn encode(value: anytype, writer: anytype) !void {
-    return try packer(writer).write(@TypeOf(value), value);
+    return try packer(writer).write(value);
 }
 
 pub const Decoded = std.json.Parsed;
