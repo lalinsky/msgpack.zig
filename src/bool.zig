@@ -8,18 +8,27 @@ pub fn getBoolSize() usize {
     return 1;
 }
 
-inline fn assertBoolType(comptime T: type) void {
+inline fn forceBoolType(value: anytype) type {
+    const T = @TypeOf(value);
+    if (@typeInfo(T) == .Null) {
+        return ?bool;
+    }
+    assertBoolType(T);
+    return T;
+}
+
+inline fn assertBoolType(T: type) void {
     switch (@typeInfo(T)) {
         .Bool => return,
         .Optional => |opt_info| {
-            assertBoolType(opt_info.child);
+            return assertBoolType(opt_info.child);
         },
         else => @compileError("Expected bool, got " ++ @typeName(T)),
     }
 }
 
-pub fn packBool(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
-    assertBoolType(T);
+pub fn packBool(writer: anytype, value_or_maybe_null: anytype) !void {
+    const T = forceBoolType(value_or_maybe_null);
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
     try writer.writeByte(if (value) hdrs.TRUE else hdrs.FALSE);
@@ -43,21 +52,21 @@ const packed_zero = [_]u8{0x00};
 test "packBool: false" {
     var buffer: [16]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    try packBool(stream.writer(), bool, false);
+    try packBool(stream.writer(), false);
     try std.testing.expectEqualSlices(u8, &packed_false, stream.getWritten());
 }
 
 test "packBool: true" {
     var buffer: [16]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    try packBool(stream.writer(), bool, true);
+    try packBool(stream.writer(), true);
     try std.testing.expectEqualSlices(u8, &packed_true, stream.getWritten());
 }
 
 test "packBool: null" {
     var buffer: [16]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    try packBool(stream.writer(), ?bool, null);
+    try packBool(stream.writer(), null);
     try std.testing.expectEqualSlices(u8, &packed_null, stream.getWritten());
 }
 

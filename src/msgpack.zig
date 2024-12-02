@@ -85,7 +85,7 @@ pub fn Packer(comptime Writer: type) type {
         }
 
         pub fn writeBool(self: Self, value: anytype) !void {
-            try packBool(self.writer, @TypeOf(value), value);
+            try packBool(self.writer, value);
         }
 
         pub fn writeInt(self: Self, value: anytype) !void {

@@ -74,7 +74,7 @@ pub fn packAny(writer: anytype, value: anytype) !void {
     const T = @TypeOf(value);
     switch (@typeInfo(T)) {
         .Void => return packNull(writer),
-        .Bool => return packBool(writer, T, value),
+        .Bool => return packBool(writer, value),
         .Int => return packInt(writer, T, value),
         .Float => return packFloat(writer, T, value),
         .ComptimeInt => return packInt(writer, i64, @intCast(value)),
