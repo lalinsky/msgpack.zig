@@ -84,16 +84,16 @@ pub fn Packer(comptime Writer: type) type {
             try packNull(self.writer);
         }
 
-        pub fn writeBool(self: Self, comptime T: type, value: T) !void {
-            try packBool(self.writer, T, value);
+        pub fn writeBool(self: Self, value: anytype) !void {
+            try packBool(self.writer, @TypeOf(value), value);
         }
 
-        pub fn writeInt(self: Self, comptime T: type, value: T) !void {
-            try packInt(self.writer, T, value);
+        pub fn writeInt(self: Self, value: anytype) !void {
+            try packInt(self.writer, @TypeOf(value), value);
         }
 
-        pub fn writeFloat(self: Self, comptime T: type, value: T) !void {
-            return packFloat(self.writer, T, value);
+        pub fn writeFloat(self: Self, value: anytype) !void {
+            return packFloat(self.writer, @TypeOf(value));
         }
 
         pub fn writeStringHeader(self: Self, len: usize) !void {
@@ -136,12 +136,12 @@ pub fn Packer(comptime Writer: type) type {
             return packMap(self.writer, value);
         }
 
-        pub fn writeStruct(self: Self, comptime T: type, value: T) !void {
-            return packStruct(self.writer, T, value);
+        pub fn writeStruct(self: Self, value: anytype) !void {
+            return packStruct(self.writer, @TypeOf(value), value);
         }
 
-        pub fn writeUnion(self: Self, comptime T: type, value: T) !void {
-            return packUnion(self.writer, T, value);
+        pub fn writeUnion(self: Self, value: anytype) !void {
+            return packUnion(self.writer, @TypeOf(value), value);
         }
 
         pub fn write(self: Self, value: anytype) !void {
