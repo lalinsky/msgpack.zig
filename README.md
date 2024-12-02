@@ -25,7 +25,7 @@ const msgpack = b.dependency("msgpack", .{
 });
 
 // the executable from your call to b.addExecutable(...)
-exe.root_module.addImport("msgpack", httpz.module("msgpack"));
+exe.root_module.addImport("msgpack", msgpack.module("msgpack"));
 ```
 
 ## Usage
@@ -52,8 +52,8 @@ try msgpack.encode(Message{
 const decoded = try msgpack.decodeFromSlice(Message, allocator, buffer.items);
 defer decoded.deinit();
 
-std.debug.assert(std.mem.eql(u8, decoded.name, "John"));
-std.debug.assert(decoded.age == 20);
+std.debug.assert(std.mem.eql(u8, decoded.value.name, "John"));
+std.debug.assert(decoded.value.age == 20);
 ```
 
 The encoded message will use field names as keys to encode the message. In order to generate more compact messages, you can change the format to use field indexes:
@@ -96,7 +96,8 @@ const std = @import("std");
 const msgpack = @import("msgpack");
 
 const Message = struct {
-    items: []u32,
+    name: []const u8,
+    age: u8,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .custom } };
@@ -104,7 +105,8 @@ const Message = struct {
 
     pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
         return switch (field) {
-            .items => 1,
+            .name => 1,
+            .age => 2,
         };
     }
 };
