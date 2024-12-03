@@ -77,8 +77,10 @@ pub fn packMap(writer: anytype, value_or_maybe_null: anytype) !void {
 }
 
 pub fn unpackMap(writer: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
-    var map = T.init(allocator);
-    errdefer map.deinit();
+    const is_managed = @hasField(T, "unmanaged");
+
+    var map: T = if (is_managed) T.init(allocator) else .{};
+    errdefer if (is_managed) map.deinit() else map.deinit(allocator);
 
     try unpackMapInto(writer, allocator, &map);
 
@@ -89,7 +91,11 @@ pub fn unpackMapInto(writer: anytype, allocator: std.mem.Allocator, map: anytype
     const T = std.meta.Child(@TypeOf(map));
     const len = try unpackMapHeader(writer, T.Size);
 
-    try map.ensureTotalCapacity(len);
+    if (@hasField(T, "unmanaged")) {
+        try map.ensureTotalCapacity(len);
+    } else {
+        try map.ensureTotalCapacity(allocator, len);
+    }
 
     for (0..len) |_| {
         var kv: T.KV = undefined;
@@ -99,7 +105,7 @@ pub fn unpackMapInto(writer: anytype, allocator: std.mem.Allocator, map: anytype
     }
 }
 
-test "packMap" {
+test "packMap managed" {
     var map = std.AutoHashMap(u8, u8).init(std.testing.allocator);
     defer map.deinit();
 
@@ -113,12 +119,36 @@ test "packMap" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0x81, 0x01, 0x02 }, buf.items);
 }
 
-test "unpackMap" {
+test "packMap unmanaged" {
+    var map = std.AutoHashMap(u8, u8).init(std.testing.allocator);
+    defer map.deinit();
+
+    try map.put(1, 2);
+
+    var buf = std.ArrayList(u8).init(std.testing.allocator);
+    defer buf.deinit();
+
+    try packMap(buf.writer(), map.unmanaged);
+
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0x81, 0x01, 0x02 }, buf.items);
+}
+
+test "unpackMap managed" {
     var buf = [_]u8{ 0x81, 0x01, 0x02 };
     var stream = std.io.fixedBufferStream(&buf);
 
     var map = try unpackMap(stream.reader(), std.testing.allocator, std.AutoHashMap(u8, u8));
     defer map.deinit();
+
+    try std.testing.expectEqual(2, map.get(1));
+}
+
+test "unpackMap unmanaged" {
+    var buf = [_]u8{ 0x81, 0x01, 0x02 };
+    var stream = std.io.fixedBufferStream(&buf);
+
+    var map = try unpackMap(stream.reader(), std.testing.allocator, std.AutoHashMapUnmanaged(u8, u8));
+    defer map.deinit(std.testing.allocator);
 
     try std.testing.expectEqual(2, map.get(1));
 }
