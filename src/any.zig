@@ -36,14 +36,14 @@ const unpackUnion = @import("union.zig").unpackUnion;
 
 inline fn isString(comptime T: type) bool {
     switch (@typeInfo(T)) {
-        .Pointer => |ptr_info| {
+        .pointer => |ptr_info| {
             if (ptr_info.size == .Slice) {
                 if (ptr_info.child == u8) {
                     return true;
                 }
             }
         },
-        .Optional => |opt_info| {
+        .optional => |opt_info| {
             return isString(opt_info.child);
         },
         else => {},
@@ -53,10 +53,10 @@ inline fn isString(comptime T: type) bool {
 
 pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
     switch (@typeInfo(NonOptional(T))) {
-        .Bool => return getBoolSize(),
-        .Int => return getIntSize(T, value),
-        .Float => return getFloatSize(T, value),
-        .Pointer => |ptr_info| {
+        .bool => return getBoolSize(),
+        .int => return getIntSize(T, value),
+        .float => return getFloatSize(T, value),
+        .pointer => |ptr_info| {
             if (ptr_info.size == .Slice) {
                 if (isString(T)) {
                     return sizeOfPackedString(value.len);
@@ -73,13 +73,13 @@ pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
 pub fn packAny(writer: anytype, value: anytype) !void {
     const T = @TypeOf(value);
     switch (@typeInfo(T)) {
-        .Void => return packNull(writer),
-        .Bool => return packBool(writer, value),
-        .Int => return packInt(writer, T, value),
-        .Float => return packFloat(writer, T, value),
-        .ComptimeInt => return packInt(writer, i64, @intCast(value)),
-        .ComptimeFloat => return packFloat(writer, f64, @floatCast(value)),
-        .Array => |arr_info| {
+        .void => return packNull(writer),
+        .bool => return packBool(writer, value),
+        .int => return packInt(writer, T, value),
+        .float => return packFloat(writer, T, value),
+        .comptime_int => return packInt(writer, i64, @intCast(value)),
+        .comptime_float => return packFloat(writer, f64, @floatCast(value)),
+        .array => |arr_info| {
             switch (arr_info.child) {
                 u8 => {
                     return packString(writer, &value);
@@ -89,7 +89,7 @@ pub fn packAny(writer: anytype, value: anytype) !void {
                 },
             }
         },
-        .Pointer => |ptr_info| {
+        .pointer => |ptr_info| {
             if (ptr_info.size == .Slice) {
                 switch (ptr_info.child) {
                     u8 => {
@@ -103,9 +103,9 @@ pub fn packAny(writer: anytype, value: anytype) !void {
                 return packAny(writer, value.*);
             }
         },
-        .Struct => return packStruct(writer, T, value),
-        .Union => return packUnion(writer, T, value),
-        .Optional => {
+        .@"struct" => return packStruct(writer, T, value),
+        .@"union" => return packUnion(writer, T, value),
+        .optional => {
             if (value) |val| {
                 return packAny(writer, val);
             } else {
@@ -119,13 +119,13 @@ pub fn packAny(writer: anytype, value: anytype) !void {
 
 pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
     switch (@typeInfo(T)) {
-        .Void => return unpackNull(reader),
-        .Bool => return unpackBool(reader, T),
-        .Int => return unpackInt(reader, T),
-        .Float => return unpackFloat(reader, T),
-        .Struct => return unpackStruct(reader, allocator, T),
-        .Union => return unpackUnion(reader, allocator, T),
-        .Pointer => |ptr_info| {
+        .void => return unpackNull(reader),
+        .bool => return unpackBool(reader, T),
+        .int => return unpackInt(reader, T),
+        .float => return unpackFloat(reader, T),
+        .@"struct" => return unpackStruct(reader, allocator, T),
+        .@"union" => return unpackUnion(reader, allocator, T),
+        .pointer => |ptr_info| {
             if (ptr_info.size == .Slice) {
                 if (isString(T)) {
                     return unpackString(reader, allocator);
@@ -134,7 +134,7 @@ pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type
                 }
             }
         },
-        .Optional => |opt_info| {
+        .optional => |opt_info| {
             return unpackAny(reader, allocator, opt_info.child) catch |err| {
                 if (isNullError(err)) {
                     return null;

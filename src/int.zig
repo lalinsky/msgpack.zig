@@ -7,8 +7,8 @@ const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 inline fn assertIntType(comptime T: type) type {
     switch (@typeInfo(T)) {
-        .Int => return T,
-        .Optional => |opt_info| {
+        .int => return T,
+        .optional => |opt_info| {
             return assertIntType(opt_info.child);
         },
         else => @compileError("Expected int, got " ++ @typeName(T)),
@@ -24,8 +24,8 @@ pub fn getIntSize(comptime T: type, value: T) usize {
     const Type = assertIntType(T);
     const type_info = @typeInfo(Type);
 
-    const is_signed = type_info.Int.signedness == .signed;
-    const bits = type_info.Int.bits;
+    const is_signed = type_info.int.signedness == .signed;
+    const bits = type_info.int.bits;
 
     if (is_signed) {
         if (value >= -32 and value <= -1) {
@@ -45,7 +45,7 @@ pub fn getIntSize(comptime T: type, value: T) usize {
         if (bits == 64 or value >= std.math.minInt(i64) and value <= std.math.maxInt(i64)) {
             return 1 + @sizeOf(i64);
         }
-        @compileError("Unsupported signed int with " ++ type_info.Int.bits ++ "bits");
+        @compileError("Unsupported signed int with " ++ type_info.int.bits ++ "bits");
     } else {
         if (value <= 127) {
             return 1;
@@ -77,8 +77,8 @@ pub fn packInt(writer: anytype, comptime T: type, value_or_maybe_null: T) !void 
     const value: Type = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
     const type_info = @typeInfo(Type);
-    const is_signed = type_info.Int.signedness == .signed;
-    const bits = type_info.Int.bits;
+    const is_signed = type_info.int.signedness == .signed;
+    const bits = type_info.int.bits;
 
     if (is_signed) {
         if (value >= -32 and value <= -1) {
@@ -100,7 +100,7 @@ pub fn packInt(writer: anytype, comptime T: type, value_or_maybe_null: T) !void 
         if (bits == 64 or value >= std.math.minInt(i64) and value <= std.math.maxInt(i64)) {
             return packFixedSizeInt(writer, i64, @intCast(value));
         }
-        @compileError("Unsupported signed int with " ++ type_info.Int.bits ++ "bits");
+        @compileError("Unsupported signed int with " ++ type_info.int.bits ++ "bits");
     } else {
         if (value <= 127) {
             return writer.writeByte(@bitCast(@as(u8, @intCast(value))));
@@ -128,23 +128,23 @@ pub fn packFixedSizeInt(writer: anytype, comptime T: type, value: T) !void {
 
 inline fn resolveFixedSizeIntHeader(comptime T: type) u8 {
     const type_info = @typeInfo(T);
-    switch (type_info.Int.signedness) {
+    switch (type_info.int.signedness) {
         .signed => {
-            switch (type_info.Int.bits) {
+            switch (type_info.int.bits) {
                 8 => return hdrs.INT8,
                 16 => return hdrs.INT16,
                 32 => return hdrs.INT32,
                 64 => return hdrs.INT64,
-                else => @compileError("Unsupported signed int with " ++ type_info.Int.bits ++ "bits"),
+                else => @compileError("Unsupported signed int with " ++ type_info.int.bits ++ "bits"),
             }
         },
         .unsigned => {
-            switch (type_info.Int.bits) {
+            switch (type_info.int.bits) {
                 8 => return hdrs.UINT8,
                 16 => return hdrs.UINT16,
                 32 => return hdrs.UINT32,
                 64 => return hdrs.UINT64,
-                else => @compileError("Unsupported unsigned int with " ++ type_info.Int.bits ++ "bits"),
+                else => @compileError("Unsupported unsigned int with " ++ type_info.int.bits ++ "bits"),
             }
         },
     }
@@ -169,8 +169,8 @@ pub fn unpackIntValue(reader: anytype, comptime SourceType: type, comptime Targe
     }
     const value = std.mem.readInt(SourceType, &buf, .big);
 
-    const source_type_info = @typeInfo(SourceType).Int;
-    const target_type_info = @typeInfo(TargetType).Int;
+    const source_type_info = @typeInfo(SourceType).int;
+    const target_type_info = @typeInfo(TargetType).int;
 
     if (source_type_info.signedness == target_type_info.signedness and source_type_info.bits <= target_type_info.bits) {
         return @intCast(value);
@@ -193,7 +193,7 @@ pub fn unpackInt(reader: anytype, comptime T: type) !T {
 
     if (header >= hdrs.NEGATIVE_FIXINT_MIN) {
         const value: i8 = @bitCast(header);
-        if (type_info.Int.signedness == .signed) {
+        if (type_info.int.signedness == .signed) {
             return value;
         } else if (value >= 0) {
             return @intCast(value);
@@ -236,7 +236,7 @@ test "readInt: negative fixint" {
     const buffer = [_]u8{0xe0};
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .unsigned) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -249,7 +249,7 @@ test "readInt: uint8" {
     const buffer = [_]u8{ 0xcc, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.bits < 8 or (info.bits == 8 and info.signedness == .signed)) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -262,7 +262,7 @@ test "readInt: uint16" {
     const buffer = [_]u8{ 0xcd, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.bits < 16 or (info.bits == 16 and info.signedness == .signed)) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -275,7 +275,7 @@ test "readInt: uint32" {
     const buffer = [_]u8{ 0xce, 0xff, 0xff, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.bits < 32 or (info.bits == 32 and info.signedness == .signed)) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -288,7 +288,7 @@ test "readInt: uint64" {
     const buffer = [_]u8{ 0xcf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.bits < 64 or (info.bits == 64 and info.signedness == .signed)) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -301,7 +301,7 @@ test "readInt: negative int8" {
     const buffer = [_]u8{ 0xd0, 0x80 };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .unsigned or info.bits < 8) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -314,7 +314,7 @@ test "readInt: positive int8" {
     const buffer = [_]u8{ 0xd0, 0x7f };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.bits < 7) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -327,7 +327,7 @@ test "readInt: negative int16" {
     const buffer = [_]u8{ 0xd1, 0x80, 0x00 };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .unsigned or info.bits < 16) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -340,7 +340,7 @@ test "readInt: positive int16" {
     const buffer = [_]u8{ 0xd1, 0x7f, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.bits < 15) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -353,7 +353,7 @@ test "readInt: negative int32" {
     const buffer = [_]u8{ 0xd2, 0x80, 0x00, 0x00, 0x00 };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .unsigned or info.bits < 32) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -366,7 +366,7 @@ test "readInt: positive int32" {
     const buffer = [_]u8{ 0xd2, 0x7f, 0xff, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.bits < 31) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -379,7 +379,7 @@ test "readInt: negative int64" {
     const buffer = [_]u8{ 0xd3, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .unsigned or info.bits < 64) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -392,7 +392,7 @@ test "readInt: positive int64" {
     const buffer = [_]u8{ 0xd3, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.bits < 63) {
             try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
         } else {
@@ -413,7 +413,7 @@ test "writeInt: positive fixint" {
 test "writeInt: negative fixint" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .signed) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, -32);
@@ -425,7 +425,7 @@ test "writeInt: negative fixint" {
 test "writeInt: uint8" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .unsigned and info.bits >= 8) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, 200);
@@ -437,7 +437,7 @@ test "writeInt: uint8" {
 test "writeInt: uint16" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .unsigned and info.bits >= 16) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, 40000);
@@ -449,7 +449,7 @@ test "writeInt: uint16" {
 test "writeInt: uint32" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .unsigned and info.bits >= 32) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, 3000000000);
@@ -461,7 +461,7 @@ test "writeInt: uint32" {
 test "writeInt: uint64" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .unsigned and info.bits >= 64) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, 9000000000000000000);
@@ -473,7 +473,7 @@ test "writeInt: uint64" {
 test "writeInt: positive int8" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .signed and info.bits > 8) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, 100);
@@ -485,7 +485,7 @@ test "writeInt: positive int8" {
 test "writeInt: negative int8" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .signed and info.bits >= 8) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, -100);
@@ -497,7 +497,7 @@ test "writeInt: negative int8" {
 test "writeInt: positive int16" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .signed and info.bits >= 16) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, 20000);
@@ -509,7 +509,7 @@ test "writeInt: positive int16" {
 test "writeInt: negative int16" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .signed and info.bits >= 16) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, -20000);
@@ -521,7 +521,7 @@ test "writeInt: negative int16" {
 test "writeInt: positive int32" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .signed and info.bits >= 32) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, 2000000000);
@@ -533,7 +533,7 @@ test "writeInt: positive int32" {
 test "writeInt: negative int32" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .signed and info.bits >= 32) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, -2000000000);
@@ -545,7 +545,7 @@ test "writeInt: negative int32" {
 test "writeInt: positive int64" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .signed and info.bits >= 64) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, 8000000000000000000);
@@ -557,7 +557,7 @@ test "writeInt: positive int64" {
 test "writeInt: negative int64" {
     var buffer: [100]u8 = undefined;
     inline for (int_types) |T| {
-        const info = @typeInfo(T).Int;
+        const info = @typeInfo(T).int;
         if (info.signedness == .signed and info.bits >= 64) {
             var stream = std.io.fixedBufferStream(&buffer);
             try packInt(stream.writer(), T, -9000000000000000000);

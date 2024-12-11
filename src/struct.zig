@@ -92,7 +92,7 @@ fn strPrefix(src: []const u8, len: usize) []const u8 {
 
 pub fn packStructAsMap(writer: anytype, comptime T: type, value: T, comptime opts: StructAsMapOptions) !void {
     const type_info = @typeInfo(T);
-    const fields = type_info.Struct.fields;
+    const fields = type_info.@"struct".fields;
     const FieldEnum = std.meta.FieldEnum(T);
 
     try packMapHeader(writer, countUsedStructFields(fields, value, opts));
@@ -121,7 +121,7 @@ pub fn packStructAsMap(writer: anytype, comptime T: type, value: T, comptime opt
 
 pub fn packStructAsArray(writer: anytype, comptime T: type, value: T, comptime opts: StructAsArrayOptions) !void {
     const type_info = @typeInfo(T);
-    const fields = type_info.Struct.fields;
+    const fields = type_info.@"struct".fields;
 
     try packArrayHeader(writer, fields.len);
 
@@ -137,7 +137,7 @@ pub fn packStruct(writer: anytype, comptime T: type, value_or_maybe_null: T) !vo
     const Type = @TypeOf(value);
     const type_info = @typeInfo(Type);
 
-    if (type_info != .Struct) {
+    if (type_info != .@"struct") {
         @compileError("Expected struct type");
     }
 
@@ -158,14 +158,14 @@ pub fn packStruct(writer: anytype, comptime T: type, value_or_maybe_null: T) !vo
 }
 
 pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsMapOptions) !T {
-    const len = if (@typeInfo(T) == .Optional)
+    const len = if (@typeInfo(T) == .optional)
         try unpackMapHeader(reader, ?u16) orelse return null
     else
         try unpackMapHeader(reader, u16);
 
     const Type = NonOptional(T);
     const type_info = @typeInfo(Type);
-    const fields = type_info.Struct.fields;
+    const fields = type_info.@"struct".fields;
     const FieldEnum = std.meta.FieldEnum(T);
 
     var fields_seen = std.bit_set.StaticBitSet(fields.len).initEmpty();
@@ -235,7 +235,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
                 const default_field_value = @as(*field.type, @ptrCast(@alignCast(@constCast(default_field_value_ptr)))).*;
                 @field(result, field.name) = default_field_value;
                 fields_seen.set(i);
-            } else if (@typeInfo(field.type) == .Optional) {
+            } else if (@typeInfo(field.type) == .optional) {
                 @field(result, field.name) = null;
                 fields_seen.set(i);
             }
@@ -257,7 +257,7 @@ pub fn unpackStructAsArray(reader: anytype, allocator: std.mem.Allocator, compti
 
     const Type = NonOptional(T);
     const type_info = @typeInfo(Type);
-    const fields = type_info.Struct.fields;
+    const fields = type_info.@"struct".fields;
 
     if (len != fields.len) {
         return error.InvalidFormat;

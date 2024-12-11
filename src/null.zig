@@ -18,7 +18,7 @@ pub fn unpackNull(reader: anytype) !void {
 }
 
 pub fn maybePackNull(writer: anytype, comptime T: type, value: T) !?NonOptional(T) {
-    if (@typeInfo(T) == .Optional) {
+    if (@typeInfo(T) == .optional) {
         if (value == null) {
             try packNull(writer);
             return null;

@@ -7,8 +7,8 @@ const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 inline fn assertFloatType(comptime T: type) type {
     switch (@typeInfo(T)) {
-        .Float => return T,
-        .Optional => |opt_info| {
+        .float => return T,
+        .optional => |opt_info| {
             return assertFloatType(opt_info.child);
         },
         else => @compileError("Expected float, got " ++ @typeName(T)),

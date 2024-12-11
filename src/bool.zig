@@ -10,7 +10,7 @@ pub fn getBoolSize() usize {
 
 inline fn forceBoolType(value: anytype) type {
     const T = @TypeOf(value);
-    if (@typeInfo(T) == .Null) {
+    if (@typeInfo(T) == .null) {
         return ?bool;
     }
     assertBoolType(T);
@@ -19,8 +19,8 @@ inline fn forceBoolType(value: anytype) type {
 
 inline fn assertBoolType(T: type) void {
     switch (@typeInfo(T)) {
-        .Bool => return,
-        .Optional => |opt_info| {
+        .bool => return,
+        .optional => |opt_info| {
             return assertBoolType(opt_info.child);
         },
         else => @compileError("Expected bool, got " ++ @typeName(T)),
