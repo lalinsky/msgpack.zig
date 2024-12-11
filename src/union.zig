@@ -50,9 +50,9 @@ fn strPrefix(src: []const u8, len: usize) []const u8 {
 
 pub fn packUnionAsMap(writer: anytype, comptime T: type, value: T, opts: UnionAsMapOptions) !void {
     const type_info = @typeInfo(T);
-    const fields = type_info.Union.fields;
+    const fields = type_info.@"union".fields;
 
-    const TagType = @typeInfo(T).Union.tag_type.?;
+    const TagType = @typeInfo(T).@"union".tag_type.?;
 
     try packMapHeader(writer, 1);
 
@@ -79,7 +79,7 @@ pub fn packUnion(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
     const Type = @TypeOf(value);
     const type_info = @typeInfo(Type);
 
-    if (type_info != .Union) {
+    if (type_info != .@"union") {
         @compileError("Expected union type");
     }
 
@@ -92,7 +92,7 @@ pub fn packUnion(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
 }
 
 pub fn unpackUnionAsMap(reader: anytype, allocator: std.mem.Allocator, comptime T: type, opts: UnionAsMapOptions) !T {
-    const len = if (@typeInfo(T) == .Optional)
+    const len = if (@typeInfo(T) == .optional)
         try unpackMapHeader(reader, ?u16) orelse return null
     else
         try unpackMapHeader(reader, u16);
@@ -103,7 +103,7 @@ pub fn unpackUnionAsMap(reader: anytype, allocator: std.mem.Allocator, comptime 
 
     const Type = NonOptional(T);
     const type_info = @typeInfo(Type);
-    const fields = type_info.Union.fields;
+    const fields = type_info.@"union".fields;
 
     var field_name_buffer: [256]u8 = undefined;
 
