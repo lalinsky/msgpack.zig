@@ -2,8 +2,8 @@ const std = @import("std");
 
 pub fn NonOptional(comptime T: type) type {
     const type_info = @typeInfo(T);
-    if (type_info == .Optional) {
-        return type_info.Optional.child;
+    if (type_info == .optional) {
+        return type_info.optional.child;
     }
     return T;
 }
@@ -13,7 +13,7 @@ pub fn Optional(comptime T: type, comptime is_optional: bool) type {
 }
 
 pub inline fn isOptional(comptime T: type) bool {
-    return @typeInfo(T) == .Optional;
+    return @typeInfo(T) == .optional;
 }
 
 test isOptional {
