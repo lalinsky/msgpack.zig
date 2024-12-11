@@ -66,7 +66,7 @@ fn isStructFieldUsed(field: std.builtin.Type.StructField, value: anytype, opts: 
     }
 
     if (opts.omit_nulls) {
-        if (field_type_info == .Optional) {
+        if (field_type_info == .optional) {
             if (field_value == null) {
                 return false;
             }
@@ -250,7 +250,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
 }
 
 pub fn unpackStructAsArray(reader: anytype, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsArrayOptions) !T {
-    const len = if (@typeInfo(T) == .Optional)
+    const len = if (@typeInfo(T) == .optional)
         try unpackArrayHeader(reader, ?u16) orelse return null
     else
         try unpackArrayHeader(reader, u16);
