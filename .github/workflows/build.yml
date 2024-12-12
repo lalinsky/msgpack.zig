@@ -12,5 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v1
-        version: master
+        with:
+          version: master
       - run: zig build test --summary all
