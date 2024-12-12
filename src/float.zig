@@ -7,8 +7,8 @@ const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 inline fn assertFloatType(comptime T: type) type {
     switch (@typeInfo(T)) {
-        .Float => return T,
-        .Optional => |opt_info| {
+        .float => return T,
+        .optional => |opt_info| {
             return assertFloatType(opt_info.child);
         },
         else => @compileError("Expected float, got " ++ @typeName(T)),
@@ -32,7 +32,7 @@ pub fn packFloat(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
 
     comptime var TargetType: type = undefined;
     const type_info = @typeInfo(Type);
-    switch (type_info.Float.bits) {
+    switch (type_info.float.bits) {
         0...32 => {
             try writer.writeByte(hdrs.FLOAT32);
             TargetType = f32;
@@ -88,10 +88,10 @@ const packed_float64_inf = [_]u8{ 0xcb, 0x7f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00
 
 const float_types = [_]type{ f16, f32, f64 };
 
-fn minFloatType(comptime T1: type, comptime T2: type) type {
+fn MinFloatType(comptime T1: type, comptime T2: type) type {
     const ti1 = @typeInfo(T1);
     const ti2 = @typeInfo(T2);
-    return std.meta.Float(@min(ti1.Float.bits, ti2.Float.bits));
+    return std.meta.Float(@min(ti1.float.bits, ti2.float.bits));
 }
 
 test "readFloat: null" {
@@ -105,7 +105,7 @@ test "readFloat: float32 (zero)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float32_zero);
         const value = try unpackFloat(stream.reader(), T);
-        try std.testing.expectApproxEqAbs(0.0, value, std.math.floatEpsAt(minFloatType(T, f32), @floatCast(value)));
+        try std.testing.expectApproxEqAbs(0.0, value, std.math.floatEpsAt(MinFloatType(T, f32), @floatCast(value)));
     }
 }
 
@@ -113,7 +113,7 @@ test "readFloat: float64 (zero)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float64_zero);
         const value = try unpackFloat(stream.reader(), T);
-        try std.testing.expectApproxEqAbs(0.0, value, std.math.floatEpsAt(minFloatType(T, f64), @floatCast(value)));
+        try std.testing.expectApproxEqAbs(0.0, value, std.math.floatEpsAt(MinFloatType(T, f64), @floatCast(value)));
     }
 }
 
@@ -121,7 +121,7 @@ test "readFloat: float32 (pi)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float32_pi);
         const value = try unpackFloat(stream.reader(), T);
-        try std.testing.expectApproxEqAbs(std.math.pi, value, std.math.floatEpsAt(minFloatType(T, f32), @floatCast(value)));
+        try std.testing.expectApproxEqAbs(std.math.pi, value, std.math.floatEpsAt(MinFloatType(T, f32), @floatCast(value)));
     }
 }
 
@@ -129,7 +129,7 @@ test "readFloat: float64 (pi)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float64_pi);
         const value = try unpackFloat(stream.reader(), T);
-        try std.testing.expectApproxEqAbs(std.math.pi, value, std.math.floatEpsAt(minFloatType(T, f64), @floatCast(value)));
+        try std.testing.expectApproxEqAbs(std.math.pi, value, std.math.floatEpsAt(MinFloatType(T, f64), @floatCast(value)));
     }
 }
 
