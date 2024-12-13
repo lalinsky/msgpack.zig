@@ -27,6 +27,13 @@ inline fn assertBoolType(T: type) void {
     }
 }
 
+pub fn isBoolHeader(header: u8) bool {
+    return switch (header) {
+        hdrs.TRUE, hdrs.FALSE => true,
+        else => false,
+    };
+}
+
 pub fn packBool(writer: anytype, value_or_maybe_null: anytype) !void {
     const T = forceBoolType(value_or_maybe_null);
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
@@ -34,9 +41,8 @@ pub fn packBool(writer: anytype, value_or_maybe_null: anytype) !void {
     try writer.writeByte(if (value) hdrs.TRUE else hdrs.FALSE);
 }
 
-pub fn unpackBool(reader: anytype, comptime T: type) !T {
+pub fn unpackBool(header: u8, comptime T: type) !T {
     assertBoolType(T);
-    const header = try reader.readByte();
     switch (header) {
         hdrs.TRUE => return true,
         hdrs.FALSE => return false,
@@ -71,28 +77,23 @@ test "packBool: null" {
 }
 
 test "unpackBool: false" {
-    var stream = std.io.fixedBufferStream(&packed_false);
-    try std.testing.expectEqual(false, try unpackBool(stream.reader(), bool));
+    try std.testing.expectEqual(false, try unpackBool(packed_false[0], bool));
 }
 
 test "unpackBool: true" {
-    var stream = std.io.fixedBufferStream(&packed_true);
-    try std.testing.expectEqual(true, try unpackBool(stream.reader(), bool));
+    try std.testing.expectEqual(true, try unpackBool(packed_true[0], bool));
 }
 
 test "unpackBool: null into optional" {
-    var stream = std.io.fixedBufferStream(&packed_null);
-    try std.testing.expectEqual(null, try unpackBool(stream.reader(), ?bool));
+    try std.testing.expectEqual(null, try unpackBool(packed_null[0], ?bool));
 }
 
 test "unpackBool: null into non-optional" {
-    var stream = std.io.fixedBufferStream(&packed_null);
-    try std.testing.expectError(error.Null, unpackBool(stream.reader(), bool));
+    try std.testing.expectError(error.Null, unpackBool(packed_null[0], bool));
 }
 
 test "unpackBool: wrong type" {
-    var stream = std.io.fixedBufferStream(&packed_zero);
-    try std.testing.expectError(error.InvalidFormat, unpackBool(stream.reader(), bool));
+    try std.testing.expectError(error.InvalidFormat, unpackBool(packed_zero[0], bool));
 }
 
 test "getBoolSize" {

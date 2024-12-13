@@ -66,9 +66,8 @@ pub fn readFloatValue(reader: anytype, comptime SourceFloat: type, comptime Targ
     return @floatCast(@as(SourceFloat, @bitCast(int_value)));
 }
 
-pub fn unpackFloat(reader: anytype, comptime T: type) !T {
+pub fn unpackFloat(header: u8, reader: anytype, comptime T: type) !T {
     const Type = assertFloatType(T);
-    const header = try reader.readByte();
     switch (header) {
         hdrs.FLOAT32 => return try readFloatValue(reader, f32, Type),
         hdrs.FLOAT64 => return try readFloatValue(reader, f64, Type),
@@ -97,14 +96,18 @@ fn minFloatType(comptime T1: type, comptime T2: type) type {
 test "readFloat: null" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_null);
-        try std.testing.expectEqual(null, try unpackFloat(stream.reader(), ?T));
+        const reader = stream.reader();
+        const header = try reader.readByte();
+        try std.testing.expectEqual(null, try unpackFloat(header, reader, ?T));
     }
 }
 
 test "readFloat: float32 (zero)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float32_zero);
-        const value = try unpackFloat(stream.reader(), T);
+        const reader = stream.reader();
+        const header = try reader.readByte();
+        const value = try unpackFloat(header, reader, T);
         try std.testing.expectApproxEqAbs(0.0, value, std.math.floatEpsAt(minFloatType(T, f32), @floatCast(value)));
     }
 }
@@ -112,7 +115,9 @@ test "readFloat: float32 (zero)" {
 test "readFloat: float64 (zero)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float64_zero);
-        const value = try unpackFloat(stream.reader(), T);
+        const reader = stream.reader();
+        const header = try reader.readByte();
+        const value = try unpackFloat(header, reader, T);
         try std.testing.expectApproxEqAbs(0.0, value, std.math.floatEpsAt(minFloatType(T, f64), @floatCast(value)));
     }
 }
@@ -120,7 +125,9 @@ test "readFloat: float64 (zero)" {
 test "readFloat: float32 (pi)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float32_pi);
-        const value = try unpackFloat(stream.reader(), T);
+        const reader = stream.reader();
+        const header = try reader.readByte();
+        const value = try unpackFloat(header, reader, T);
         try std.testing.expectApproxEqAbs(std.math.pi, value, std.math.floatEpsAt(minFloatType(T, f32), @floatCast(value)));
     }
 }
@@ -128,7 +135,9 @@ test "readFloat: float32 (pi)" {
 test "readFloat: float64 (pi)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float64_pi);
-        const value = try unpackFloat(stream.reader(), T);
+        const reader = stream.reader();
+        const header = try reader.readByte();
+        const value = try unpackFloat(header, reader, T);
         try std.testing.expectApproxEqAbs(std.math.pi, value, std.math.floatEpsAt(minFloatType(T, f64), @floatCast(value)));
     }
 }
@@ -136,7 +145,9 @@ test "readFloat: float64 (pi)" {
 test "readFloat: float32 (nan)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float32_nan);
-        const value = try unpackFloat(stream.reader(), T);
+        const reader = stream.reader();
+        const header = try reader.readByte();
+        const value = try unpackFloat(header, reader, T);
         try std.testing.expect(std.math.isNan(value));
     }
 }
@@ -144,7 +155,9 @@ test "readFloat: float32 (nan)" {
 test "readFloat: float64 (nan)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float64_nan);
-        const value = try unpackFloat(stream.reader(), T);
+        const reader = stream.reader();
+        const header = try reader.readByte();
+        const value = try unpackFloat(header, reader, T);
         try std.testing.expect(std.math.isNan(value));
     }
 }
@@ -152,7 +165,9 @@ test "readFloat: float64 (nan)" {
 test "readFloat: float32 (inf)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float32_inf);
-        const value = try unpackFloat(stream.reader(), T);
+        const reader = stream.reader();
+        const header = try reader.readByte();
+        const value = try unpackFloat(header, reader, T);
         try std.testing.expect(std.math.isInf(value));
     }
 }
@@ -160,7 +175,9 @@ test "readFloat: float32 (inf)" {
 test "readFloat: float64 (inf)" {
     inline for (float_types) |T| {
         var stream = std.io.fixedBufferStream(&packed_float64_inf);
-        const value = try unpackFloat(stream.reader(), T);
+        const reader = stream.reader();
+        const header = try reader.readByte();
+        const value = try unpackFloat(header, reader, T);
         try std.testing.expect(std.math.isInf(value));
     }
 }

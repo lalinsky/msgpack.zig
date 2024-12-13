@@ -111,7 +111,7 @@ pub fn unpackUnionAsMap(reader: anytype, allocator: std.mem.Allocator, comptime 
 
     switch (opts.key) {
         .field_index => {
-            const field_index = try unpackInt(reader, u16);
+            const field_index = try unpackAny(reader, allocator, u16);
             inline for (fields, 0..) |field, i| {
                 if (field_index == i) {
                     const value = try unpackAny(reader, allocator, field.type);

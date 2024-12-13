@@ -12,8 +12,7 @@ pub fn packNull(writer: anytype) !void {
     try writer.writeByte(hdrs.NIL);
 }
 
-pub fn unpackNull(reader: anytype) !void {
-    const header = try reader.readByte();
+pub fn unpackNull(header: u8) !void {
     _ = try maybeUnpackNull(header, ?void);
 }
 
@@ -31,6 +30,13 @@ pub fn maybePackNull(writer: anytype, comptime T: type, value: T) !?NonOptional(
 
 pub fn isNullError(err: anyerror) bool {
     return err == error.Null;
+}
+
+pub fn isNullHeader(header: u8) bool {
+    return switch (header) {
+        hdrs.NIL => true,
+        else => false,
+    };
 }
 
 pub fn maybeUnpackNull(header: u8, comptime T: type) !T {
@@ -51,13 +57,11 @@ test "packNull" {
 }
 
 test "unpackNull" {
-    var stream = std.io.fixedBufferStream(&packed_null);
-    try unpackNull(stream.reader());
+    try unpackNull(packed_null[0]);
 }
 
 test "unpackNull: wrong data" {
-    var stream = std.io.fixedBufferStream(&packed_zero);
-    try std.testing.expectError(error.InvalidFormat, unpackNull(stream.reader()));
+    try std.testing.expectError(error.InvalidFormat, unpackNull(packed_zero[0]));
 }
 
 test "getMaxNullSize/getNullSize" {

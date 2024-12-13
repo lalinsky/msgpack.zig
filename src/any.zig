@@ -1,15 +1,17 @@
 const std = @import("std");
-const hdrs = @import("headers.zig");
+const h = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
 
 const packNull = @import("null.zig").packNull;
 const unpackNull = @import("null.zig").unpackNull;
 const isNullError = @import("null.zig").isNullError;
+const isNullHeader = @import("null.zig").isNullHeader;
 
 const getBoolSize = @import("bool.zig").getBoolSize;
 const packBool = @import("bool.zig").packBool;
 const unpackBool = @import("bool.zig").unpackBool;
+const isBoolHeader = @import("bool.zig").isBoolHeader;
 
 const getIntSize = @import("int.zig").getIntSize;
 const packInt = @import("int.zig").packInt;
@@ -119,10 +121,22 @@ pub fn packAny(writer: anytype, value: anytype) !void {
 
 pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
     switch (@typeInfo(T)) {
-        .Void => return unpackNull(reader),
-        .Bool => return unpackBool(reader, T),
-        .Int => return unpackInt(reader, T),
-        .Float => return unpackFloat(reader, T),
+        .Void => {
+            const value = try Any(@TypeOf(reader)).init(reader);
+            return value.readNull();
+        },
+        .Bool => {
+            const value = try Any(@TypeOf(reader)).init(reader);
+            return value.readBool();
+        },
+        .Int => {
+            const value = try Any(@TypeOf(reader)).init(reader);
+            return value.readInt(T);
+        },
+        .Float => {
+            const value = try Any(@TypeOf(reader)).init(reader);
+            return value.readFloat(T);
+        },
         .Struct => return unpackStruct(reader, allocator, T),
         .Union => return unpackUnion(reader, allocator, T),
         .Pointer => |ptr_info| {
@@ -145,6 +159,92 @@ pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type
         else => {},
     }
     @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
+}
+
+pub fn Any(comptime Reader: anytype) type {
+    return struct {
+        header: u8,
+        reader: Reader,
+
+        const Self = @This();
+
+        pub fn init(reader: anytype) !Self {
+            const header = try reader.readByte();
+            return .{ .header = header, .reader = reader };
+        }
+
+        pub fn isNull(self: Self) bool {
+            return isNullHeader(self.header);
+        }
+
+        pub fn readNull(self: Self) !void {
+            return unpackNull(self.header);
+        }
+
+        pub fn isBool(self: Self) bool {
+            return isBoolHeader(self.header);
+        }
+
+        pub fn readBool(self: Self) !bool {
+            return unpackBool(self.header, bool);
+        }
+
+        pub fn isInt(self: Self) bool {
+            return switch (self.header) {
+                h.POSITIVE_FIXINT_MIN...h.POSITIVE_FIXINT_MAX => true,
+                h.NEGATIVE_FIXINT_MIN...h.NEGATIVE_FIXINT_MIN => true,
+                h.UINT8, h.UINT16, h.UINT32, h.UINT64 => true,
+                h.INT8, h.INT16, h.INT32, h.INT64 => true,
+                else => false,
+            };
+        }
+
+        pub fn readInt(self: Self, comptime T: type) !T {
+            return unpackInt(self.header, self.reader, T);
+        }
+
+        pub fn isFloat(self: Self) bool {
+            return switch (self.header) {
+                h.FLOAT32, h.FLOAT64 => true,
+                else => false,
+            };
+        }
+
+        pub fn readFloat(self: Self, comptime T: type) !T {
+            return unpackFloat(self.header, self.reader, T);
+        }
+
+        pub fn isString(self: Self) bool {
+            return switch (self.header) {
+                h.FIXSTR_MIN...h.FIXSTR_MAX => true,
+                h.STR8, h.STR16, h.STR32 => true,
+                else => false,
+            };
+        }
+
+        pub fn isBinary(self: Self) bool {
+            return switch (self.header) {
+                h.BIN8, h.BIN16, h.BIN32 => true,
+                else => false,
+            };
+        }
+
+        pub fn isArray(self: Self) bool {
+            return switch (self.header) {
+                h.FIXARRAY_MIN...h.FIXARRAY_MAX => true,
+                h.ARRAY16, h.ARRAY32 => true,
+                else => false,
+            };
+        }
+
+        pub fn isMap(self: Self) bool {
+            return switch (self.header) {
+                h.FIXMAP_MIN...h.FIXMAP_MAX => true,
+                h.MAP16, h.MAP32 => true,
+                else => false,
+            };
+        }
+    };
 }
 
 test "packAny/unpackAny: bool" {

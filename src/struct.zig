@@ -178,7 +178,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
         var field_index: u16 = undefined;
         switch (opts.key) {
             .field_index => {
-                field_index = try unpackInt(reader, u16);
+                field_index = try unpackAny(reader, allocator, u16);
                 inline for (fields, 0..) |field, i| {
                     if (field_index == i) {
                         fields_seen.set(i);

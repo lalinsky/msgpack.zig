@@ -67,6 +67,7 @@ pub const unpackUnion = @import("union.zig").unpackUnion;
 
 pub const packAny = @import("any.zig").packAny;
 pub const unpackAny = @import("any.zig").unpackAny;
+pub const Any = @import("any.zig").Any;
 
 pub fn Packer(comptime Writer: type) type {
     return struct {
@@ -162,6 +163,10 @@ pub fn Unpacker(comptime Reader: type) type {
                 .reader = reader,
                 .allocator = allocator,
             };
+        }
+
+        pub fn readAny(self: Self) !Any(Reader) {
+            return Any(Reader).init(self.reader);
         }
 
         pub fn readNull(self: Self) !void {
