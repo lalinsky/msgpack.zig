@@ -37,7 +37,7 @@ const unpackUnion = @import("union.zig").unpackUnion;
 inline fn isString(comptime T: type) bool {
     switch (@typeInfo(T)) {
         .pointer => |ptr_info| {
-            if (ptr_info.size == .Slice) {
+            if (ptr_info.size == .slice) {
                 if (ptr_info.child == u8) {
                     return true;
                 }
@@ -90,7 +90,7 @@ pub fn packAny(writer: anytype, value: anytype) !void {
             }
         },
         .pointer => |ptr_info| {
-            if (ptr_info.size == .Slice) {
+            if (ptr_info.size == .slice) {
                 switch (ptr_info.child) {
                     u8 => {
                         return packString(writer, value);
@@ -99,7 +99,7 @@ pub fn packAny(writer: anytype, value: anytype) !void {
                         return packArray(writer, T, value);
                     },
                 }
-            } else if (ptr_info.size == .One) {
+            } else if (ptr_info.size == .one) {
                 return packAny(writer, value.*);
             }
         },
@@ -126,7 +126,7 @@ pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type
         .@"struct" => return unpackStruct(reader, allocator, T),
         .@"union" => return unpackUnion(reader, allocator, T),
         .pointer => |ptr_info| {
-            if (ptr_info.size == .Slice) {
+            if (ptr_info.size == .slice) {
                 if (isString(T)) {
                     return unpackString(reader, allocator);
                 } else {

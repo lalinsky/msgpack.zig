@@ -1,4 +1,5 @@
 const std = @import("std");
+const mem = std.mem;
 
 pub fn NonOptional(comptime T: type) type {
     const type_info = @typeInfo(T);
@@ -24,7 +25,7 @@ test isOptional {
 var no_allocator_dummy: u8 = 0;
 
 pub const NoAllocator = struct {
-    pub fn noAlloc(ctx: *anyopaque, len: usize, ptr_align: u8, ret_addr: usize) ?[*]u8 {
+    pub fn noAlloc(ctx: *anyopaque, len: usize, ptr_align: mem.Alignment, ret_addr: usize) ?[*]u8 {
         _ = ctx;
         _ = len;
         _ = ptr_align;
@@ -39,6 +40,7 @@ pub const NoAllocator = struct {
                 .alloc = noAlloc,
                 .resize = std.mem.Allocator.noResize,
                 .free = std.mem.Allocator.noFree,
+                .remap = std.mem.Allocator.noRemap,
             },
         };
     }

@@ -57,8 +57,7 @@ fn isStructFieldUsed(field: std.builtin.Type.StructField, value: anytype, opts: 
     const field_value = @field(value, field.name);
 
     if (opts.omit_defaults) {
-        if (field.default_value) |default_field_value_ptr| {
-            const default_field_value = @as(*field.type, @ptrCast(@alignCast(@constCast(default_field_value_ptr)))).*;
+        if (field.defaultValue()) |default_field_value| {
             if (field_value == default_field_value) {
                 return false;
             }
@@ -231,8 +230,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
 
     inline for (fields, 0..) |field, i| {
         if (!fields_seen.isSet(i)) {
-            if (field.default_value) |default_field_value_ptr| {
-                const default_field_value = @as(*field.type, @ptrCast(@alignCast(@constCast(default_field_value_ptr)))).*;
+            if (field.defaultValue()) |default_field_value| {
                 @field(result, field.name) = default_field_value;
                 fields_seen.set(i);
             } else if (@typeInfo(field.type) == .optional) {

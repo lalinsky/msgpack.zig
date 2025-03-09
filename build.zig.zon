@@ -1,7 +1,8 @@
 .{
-    .name = "msgpack",
+    .name = .msgpack,
     .version = "0.1.0",
     .dependencies = .{},
+    .fingerprint = 0x6733a7563cbdeb64,
     .paths = .{
         "build.zig",
         "build.zig.zon",
