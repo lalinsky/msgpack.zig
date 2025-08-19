@@ -58,7 +58,7 @@ fn isStructFieldUsed(field: std.builtin.Type.StructField, value: anytype, opts: 
 
     if (opts.omit_defaults) {
         if (field.defaultValue()) |default_field_value| {
-            if (field_value == default_field_value) {
+            if (std.meta.eql(field_value, default_field_value)) {
                 return false;
             }
         }
@@ -590,4 +590,31 @@ test "readStruct: missing field" {
     var stream = std.io.fixedBufferStream(&buffer);
     const value = unpackStruct(stream.reader(), NoAllocator.allocator(), Msg);
     try std.testing.expectError(error.MissingStructFields, value);
+}
+
+test "writeStruct: optional struct field with null default" {
+    const InnerStruct = struct {
+        x: u32,
+    };
+    
+    const OuterStruct = struct {
+        a: u32,
+        inner: ?InnerStruct = null,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .field_name, .omit_defaults = true } };
+        }
+    };
+    
+    const msg = OuterStruct{ .a = 42 };
+
+    var buffer: [100]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try packStruct(stream.writer(), OuterStruct, msg);
+
+    try std.testing.expectEqualSlices(u8, &.{
+        0x81, // map with 1 element
+        0xa1, 'a', // "a"
+        42, // value: u32(42)
+    }, stream.getWritten());
 }
