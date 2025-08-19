@@ -24,6 +24,10 @@ const unpackArrayHeader = @import("array.zig").unpackArrayHeader;
 const packAny = @import("any.zig").packAny;
 const unpackAny = @import("any.zig").unpackAny;
 
+const unpackStructAsMap = @import("struct.zig").unpackStructAsMap;
+const unpackStructFromMapBody = @import("struct.zig").unpackStructFromMapBody;
+const StructAsMapOptions = @import("struct.zig").StructAsMapOptions;
+
 pub const UnionAsMapOptions = struct {
     key: union(enum) {
         field_name,
@@ -34,8 +38,18 @@ pub const UnionAsMapOptions = struct {
     omit_defaults: bool = false,
 };
 
+pub const UnionAsTaggedOptions = struct {
+    tag_field: []const u8 = "type",
+    tag_value: union(enum) {
+        field_name,
+        field_name_prefix: u8,
+        field_index,
+    } = .field_name,
+};
+
 pub const UnionFormat = union(enum) {
     as_map: UnionAsMapOptions,
+    as_tagged: UnionAsTaggedOptions,
 };
 
 pub const default_union_format = UnionFormat{
@@ -74,6 +88,48 @@ pub fn packUnionAsMap(writer: anytype, comptime T: type, value: T, opts: UnionAs
     }
 }
 
+pub fn packUnionAsTagged(writer: anytype, comptime T: type, value: T, opts: UnionAsTaggedOptions) !void {
+    const type_info = @typeInfo(T);
+    const fields = type_info.@"union".fields;
+
+    const TagType = @typeInfo(T).@"union".tag_type.?;
+
+    inline for (fields, 0..) |field, i| {
+        if (value == @field(TagType, field.name)) {
+            const field_value = @field(value, field.name);
+            const field_type_info = @typeInfo(field.type);
+            
+            const field_count = if (field_type_info == .@"struct") field_type_info.@"struct".fields.len else 0;
+            
+            try packMapHeader(writer, field_count + 1);
+            
+            try packString(writer, opts.tag_field);
+            switch (opts.tag_value) {
+                .field_index => {
+                    try packInt(writer, u16, i);
+                },
+                .field_name => {
+                    try packString(writer, field.name);
+                },
+                .field_name_prefix => |prefix| {
+                    try packString(writer, strPrefix(field.name, prefix));
+                },
+            }
+            
+            if (field_type_info == .@"struct") {
+                inline for (field_type_info.@"struct".fields) |struct_field| {
+                    try packString(writer, struct_field.name);
+                    try packAny(writer, @field(field_value, struct_field.name));
+                }
+            } else if (field.type != void) {
+                return error.TaggedUnionUnsupportedFieldType;
+            }
+            
+            return;
+        }
+    }
+}
+
 pub fn packUnion(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
     const Type = @TypeOf(value);
@@ -87,6 +143,9 @@ pub fn packUnion(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
     switch (format) {
         .as_map => |opts| {
             return packUnionAsMap(writer, Type, value, opts);
+        },
+        .as_tagged => |opts| {
+            return packUnionAsTagged(writer, Type, value, opts);
         },
     }
 }
@@ -151,6 +210,74 @@ pub fn unpackUnionAsMap(reader: anytype, allocator: std.mem.Allocator, comptime 
     return result;
 }
 
+pub fn unpackUnionAsTagged(reader: anytype, allocator: std.mem.Allocator, comptime T: type, opts: UnionAsTaggedOptions) !T {
+    const len = if (@typeInfo(T) == .optional)
+        try unpackMapHeader(reader, ?u16) orelse return null
+    else
+        try unpackMapHeader(reader, u16);
+
+    if (len == 0) {
+        return error.InvalidTaggedUnionFieldCount;
+    }
+
+    const Type = NonOptional(T);
+    const type_info = @typeInfo(Type);
+    const fields = type_info.@"union".fields;
+
+    var tag_field_buffer: [256]u8 = undefined;
+    var tag_value_buffer: [256]u8 = undefined;
+
+    const tag_field_name = try unpackStringInto(reader, &tag_field_buffer);
+    if (!std.mem.eql(u8, tag_field_name, opts.tag_field)) {
+        return error.InvalidTagField;
+    }
+
+    var union_field_index: ?usize = null;
+    var union_field_name: ?[]const u8 = null;
+
+    switch (opts.tag_value) {
+        .field_index => {
+            const field_index = try unpackInt(reader, u16);
+            union_field_index = field_index;
+        },
+        .field_name => {
+            const field_name = try unpackStringInto(reader, &tag_value_buffer);
+            union_field_name = field_name;
+        },
+        .field_name_prefix => |_| {
+            const field_name = try unpackStringInto(reader, &tag_value_buffer);
+            union_field_name = field_name;
+        },
+    }
+
+    inline for (fields, 0..) |field, i| {
+        const is_match = switch (opts.tag_value) {
+            .field_index => union_field_index == i,
+            .field_name => if (union_field_name) |name| std.mem.eql(u8, field.name, name) else false,
+            .field_name_prefix => |prefix| if (union_field_name) |name| std.mem.startsWith(u8, field.name, strPrefix(name, prefix)) else false,
+        };
+
+        if (is_match) {
+            const field_type_info = @typeInfo(field.type);
+            
+            if (field.type == void) {
+                if (len != 1) {
+                    return error.InvalidTaggedUnionFieldCount;
+                }
+                return @unionInit(Type, field.name, {});
+            } else if (field_type_info == .@"struct") {
+                const struct_opts = StructAsMapOptions{ .key = .field_name };
+                const struct_value = try unpackStructFromMapBody(reader, allocator, field.type, len - 1, struct_opts);
+                return @unionInit(Type, field.name, struct_value);
+            } else {
+                return error.TaggedUnionUnsupportedFieldType;
+            }
+        }
+    }
+
+    return error.UnknownUnionField;
+}
+
 pub fn unpackUnion(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
     const Type = NonOptional(T);
 
@@ -158,6 +285,9 @@ pub fn unpackUnion(reader: anytype, allocator: std.mem.Allocator, comptime T: ty
     switch (format) {
         .as_map => |opts| {
             return try unpackUnionAsMap(reader, allocator, T, opts);
+        },
+        .as_tagged => |opts| {
+            return try unpackUnionAsTagged(reader, allocator, T, opts);
         },
     }
 }
@@ -217,4 +347,94 @@ test "readUnion: void field" {
     var stream = std.io.fixedBufferStream(&msg2_packed);
     const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg2);
     try std.testing.expectEqual(msg2, value);
+}
+
+const Msg3 = union(enum) {
+    get: struct { key: u32 },
+    put: struct { key: u32, val: u64 },
+
+    pub fn msgpackFormat() UnionFormat {
+        return .{ .as_tagged = .{} };
+    }
+};
+
+const Msg4 = union(enum) {
+    get: struct { key: u32 },
+    put: struct { key: u32, val: u64 },
+
+    pub fn msgpackFormat() UnionFormat {
+        return .{ .as_tagged = .{
+            .tag_field = "op",
+            .tag_value = .field_index,
+        }};
+    }
+};
+
+const msg3_get = Msg3{ .get = .{ .key = 42 } };
+const msg3_get_packed = [_]u8{
+    0x82, // map with 2 elements
+    0xa4, 't', 'y', 'p', 'e', // key: "type"
+    0xa3, 'g', 'e', 't',       // value: "get"
+    0xa3, 'k', 'e', 'y',       // key: "key"
+    42,                        // value: 42
+};
+
+const msg3_put = Msg3{ .put = .{ .key = 10, .val = 20 } };
+const msg3_put_packed = [_]u8{
+    0x83, // map with 3 elements
+    0xa4, 't', 'y', 'p', 'e', // key: "type"
+    0xa3, 'p', 'u', 't',       // value: "put"
+    0xa3, 'k', 'e', 'y',       // key: "key"  
+    10,                        // value: 10
+    0xa3, 'v', 'a', 'l',       // key: "val"
+    20,                        // value: 20
+};
+
+const msg4_get = Msg4{ .get = .{ .key = 99 } };
+const msg4_get_packed = [_]u8{
+    0x82, // map with 2 elements
+    0xa2, 'o', 'p',            // key: "op"
+    0x00,                      // value: 0 (field index)
+    0xa3, 'k', 'e', 'y',       // key: "key"
+    99,                        // value: 99
+};
+
+test "writeUnion: tagged format with field name" {
+    var buffer: [100]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try packUnion(stream.writer(), Msg3, msg3_get);
+    try std.testing.expectEqualSlices(u8, &msg3_get_packed, stream.getWritten());
+}
+
+test "writeUnion: tagged format with multiple fields" {
+    var buffer: [100]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try packUnion(stream.writer(), Msg3, msg3_put);
+    try std.testing.expectEqualSlices(u8, &msg3_put_packed, stream.getWritten());
+}
+
+test "writeUnion: tagged format with field index" {
+    var buffer: [100]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try packUnion(stream.writer(), Msg4, msg4_get);
+    try std.testing.expectEqualSlices(u8, &msg4_get_packed, stream.getWritten());
+}
+
+test "readUnion: tagged format with field name" {
+    var stream = std.io.fixedBufferStream(&msg3_get_packed);
+    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg3);
+    try std.testing.expectEqual(42, value.get.key);
+}
+
+test "readUnion: tagged format with multiple fields" {
+    var stream = std.io.fixedBufferStream(&msg3_put_packed);
+    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg3);
+    try std.testing.expectEqual(10, value.put.key);
+    try std.testing.expectEqual(20, value.put.val);
+}
+
+test "readUnion: tagged format with field index" {
+    var stream = std.io.fixedBufferStream(&msg4_get_packed);
+    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg4);
+    try std.testing.expectEqual(99, value.get.key);
 }
