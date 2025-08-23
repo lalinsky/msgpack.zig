@@ -156,12 +156,7 @@ pub fn packStruct(writer: anytype, comptime T: type, value_or_maybe_null: T) !vo
     }
 }
 
-pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsMapOptions) !T {
-    const len = if (@typeInfo(T) == .optional)
-        try unpackMapHeader(reader, ?u16) orelse return null
-    else
-        try unpackMapHeader(reader, u16);
-
+pub fn unpackStructFromMapBody(reader: anytype, allocator: std.mem.Allocator, comptime T: type, field_count: u16, comptime opts: StructAsMapOptions) !T {
     const Type = NonOptional(T);
     const type_info = @typeInfo(Type);
     const fields = type_info.@"struct".fields;
@@ -173,7 +168,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
 
     var result: Type = undefined;
 
-    for (0..len) |_| {
+    for (0..field_count) |_| {
         var field_index: u16 = undefined;
         switch (opts.key) {
             .field_index => {
@@ -245,6 +240,15 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
     }
 
     return result;
+}
+
+pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsMapOptions) !T {
+    const len = if (@typeInfo(T) == .optional)
+        try unpackMapHeader(reader, ?u16) orelse return null
+    else
+        try unpackMapHeader(reader, u16);
+
+    return unpackStructFromMapBody(reader, allocator, T, len, opts);
 }
 
 pub fn unpackStructAsArray(reader: anytype, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsArrayOptions) !T {

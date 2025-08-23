@@ -216,6 +216,14 @@ pub fn unpackInt(reader: anytype, comptime T: type) !T {
 
 const int_types = [_]type{ i8, i16, i32, i64, u8, u16, u32, u64 };
 
+fn expectIntOrOverflow(comptime T: type, expected: anytype, reader: anytype, comptime should_fit: bool) !void {
+    if (should_fit) {
+        try std.testing.expectEqual(expected, try unpackInt(reader, T));
+    } else {
+        try std.testing.expectError(error.IntegerOverflow, unpackInt(reader, T));
+    }
+}
+
 test "readInt: null" {
     const buffer = [_]u8{0xc0};
     inline for (int_types) |T| {
@@ -250,11 +258,8 @@ test "readInt: uint8" {
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
         const info = @typeInfo(T).int;
-        if (info.bits < 8 or (info.bits == 8 and info.signedness == .signed)) {
-            try std.testing.expectError(error.IntegerOverflow, unpackInt(stream.reader(), T));
-        } else {
-            try std.testing.expectEqual(0xff, try unpackInt(stream.reader(), T));
-        }
+        const fits = info.bits >= 8 and !(info.bits == 8 and info.signedness == .signed);
+        try expectIntOrOverflow(T, 0xff, stream.reader(), fits);
     }
 }
 
