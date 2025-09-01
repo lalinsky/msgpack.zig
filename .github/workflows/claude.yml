@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: mlugg/setup-zig@v1
+      - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.1
 
