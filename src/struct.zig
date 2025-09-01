@@ -208,7 +208,7 @@ pub fn unpackStructFromMapBody(reader: anytype, allocator: std.mem.Allocator, co
                 }
             },
             .custom => {
-                const KeyType = comptime @typeInfo(T.msgpackFieldKey).Fn.return_type.?;
+                const KeyType = comptime @typeInfo(@TypeOf(T.msgpackFieldKey)).@"fn".return_type.?;
                 const key = try unpackAny(reader, allocator, KeyType);
                 inline for (fields, 0..) |field, i| {
                     if (T.msgpackFieldKey(@field(FieldEnum, field.name)) == key) {
@@ -621,4 +621,33 @@ test "writeStruct: optional struct field with null default" {
         0xa1, 'a', // "a"
         42, // value: u32(42)
     }, stream.getWritten());
+}
+
+test "readStruct: msgpackFieldKey" {
+    const Msg = struct {
+        a: u32,
+        b: u64,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .custom } };
+        }
+
+        pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
+            return switch (field) {
+                .a => 101,
+                .b => 102,
+            };
+        }
+    };
+
+    const buffer = [_]u8{
+        0x82, // map with 2 elements
+        101, // key: 101
+        0x01, // value: u32(1)
+        102, // key: 102
+        0x02, // value: i32(2)
+    };
+    var stream = std.io.fixedBufferStream(&buffer);
+    const value = try unpackStruct(stream.reader(), NoAllocator.allocator(), Msg);
+    try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, value);
 }
