@@ -34,6 +34,10 @@ const unpackStruct = @import("struct.zig").unpackStruct;
 const packUnion = @import("union.zig").packUnion;
 const unpackUnion = @import("union.zig").unpackUnion;
 
+const getEnumSize = @import("enum.zig").getEnumSize;
+const packEnum = @import("enum.zig").packEnum;
+const unpackEnum = @import("enum.zig").unpackEnum;
+
 inline fn isString(comptime T: type) bool {
     switch (@typeInfo(T)) {
         .pointer => |ptr_info| {
@@ -56,6 +60,7 @@ pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
         .bool => return getBoolSize(),
         .int => return getIntSize(T, value),
         .float => return getFloatSize(T, value),
+        .@"enum" => return getEnumSize(T, value),
         .pointer => |ptr_info| {
             if (ptr_info.size == .Slice) {
                 if (isString(T)) {
@@ -105,6 +110,7 @@ pub fn packAny(writer: anytype, value: anytype) !void {
         },
         .@"struct" => return packStruct(writer, T, value),
         .@"union" => return packUnion(writer, T, value),
+        .@"enum" => return packEnum(writer, T, value),
         .optional => {
             if (value) |val| {
                 return packAny(writer, val);
@@ -125,6 +131,7 @@ pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type
         .float => return unpackFloat(reader, T),
         .@"struct" => return unpackStruct(reader, allocator, T),
         .@"union" => return unpackUnion(reader, allocator, T),
+        .@"enum" => return unpackEnum(reader, T),
         .pointer => |ptr_info| {
             if (ptr_info.size == .slice) {
                 if (isString(T)) {
