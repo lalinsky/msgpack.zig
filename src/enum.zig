@@ -26,21 +26,17 @@ pub fn getMaxEnumSize(comptime T: type) usize {
 }
 
 pub fn getEnumSize(comptime T: type, value: T) usize {
-    switch (@typeInfo(T)) {
-        .@"enum" => {
-            const tag_type = @typeInfo(T).@"enum".tag_type;
-            const int_value = @intFromEnum(value);
-            return getIntSize(tag_type, int_value);
-        },
-        .optional => |opt_info| {
-            if (value) |v| {
-                return getEnumSize(opt_info.child, v);
-            } else {
-                return 1; // size of null
-            }
-        },
-        else => @compileError("Expected enum or optional enum, got " ++ @typeName(T)),
+    if (@typeInfo(T) == .optional) {
+        if (value) |v| {
+            return getEnumSize(@typeInfo(T).optional.child, v);
+        } else {
+            return 1; // size of null
+        }
     }
+    
+    const tag_type = @typeInfo(T).@"enum".tag_type;
+    const int_value = @intFromEnum(value);
+    return getIntSize(tag_type, int_value);
 }
 
 pub fn packEnum(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
@@ -54,52 +50,36 @@ pub fn packEnum(writer: anytype, comptime T: type, value_or_maybe_null: T) !void
 }
 
 pub fn unpackEnum(reader: anytype, comptime T: type) !T {
-    switch (@typeInfo(T)) {
-        .@"enum" => {
-            const tag_type = @typeInfo(T).@"enum".tag_type;
-            const int_value = try unpackInt(reader, tag_type);
-            return @enumFromInt(int_value);
-        },
-        .optional => |opt_info| {
-            const header = try reader.readByte();
-            if (header == hdrs.NIL) {
-                return null;
-            }
-            
-            // Put the header back and unpack as non-optional enum
-            // We need to create a buffered reader that includes the header
-            const backup_reader = struct {
-                header: u8,
-                reader: @TypeOf(reader),
-                header_consumed: bool = false,
-                
-                const Self = @This();
-                
-                pub fn readByte(self: *Self) !u8 {
-                    if (!self.header_consumed) {
-                        self.header_consumed = true;
-                        return self.header;
-                    }
-                    return try self.reader.readByte();
-                }
-                
-                pub fn readBytesNoEof(self: *Self, buf: []u8) !void {
-                    if (!self.header_consumed and buf.len > 0) {
-                        buf[0] = self.header;
-                        self.header_consumed = true;
-                        if (buf.len > 1) {
-                            try self.reader.readBytesNoEof(buf[1..]);
-                        }
-                    } else {
-                        try self.reader.readBytesNoEof(buf);
-                    }
-                }
-            };
-            
-            var backup = backup_reader{ .header = header, .reader = reader };
-            return try unpackEnum(backup.reader(), opt_info.child);
-        },
-        else => @compileError("Expected enum or optional enum, got " ++ @typeName(T)),
+    const Type = assertEnumType(T);
+    const tag_type = @typeInfo(Type).@"enum".tag_type;
+    
+    const header = try reader.readByte();
+    
+    if (header <= hdrs.POSITIVE_FIXINT_MAX) {
+        return @enumFromInt(@as(tag_type, @intCast(header)));
+    }
+
+    if (header >= hdrs.NEGATIVE_FIXINT_MIN) {
+        const value: i8 = @bitCast(header);
+        const tag_type_info = @typeInfo(tag_type);
+        if (tag_type_info.int.signedness == .signed) {
+            return @enumFromInt(@as(tag_type, value));
+        } else if (value >= 0) {
+            return @enumFromInt(@as(tag_type, @intCast(value)));
+        }
+        return error.IntegerOverflow;
+    }
+
+    switch (header) {
+        hdrs.INT8 => return @enumFromInt(try unpackIntValue(reader, i8, tag_type)),
+        hdrs.INT16 => return @enumFromInt(try unpackIntValue(reader, i16, tag_type)),
+        hdrs.INT32 => return @enumFromInt(try unpackIntValue(reader, i32, tag_type)),
+        hdrs.INT64 => return @enumFromInt(try unpackIntValue(reader, i64, tag_type)),
+        hdrs.UINT8 => return @enumFromInt(try unpackIntValue(reader, u8, tag_type)),
+        hdrs.UINT16 => return @enumFromInt(try unpackIntValue(reader, u16, tag_type)),
+        hdrs.UINT32 => return @enumFromInt(try unpackIntValue(reader, u32, tag_type)),
+        hdrs.UINT64 => return @enumFromInt(try unpackIntValue(reader, u64, tag_type)),
+        else => return maybeUnpackNull(header, T),
     }
 }
 
