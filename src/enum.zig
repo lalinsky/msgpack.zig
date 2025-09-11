@@ -1,9 +1,6 @@
 const std = @import("std");
-const hdrs = @import("headers.zig");
 
-const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
-const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 const getIntSize = @import("int.zig").getIntSize;
 const packInt = @import("int.zig").packInt;
@@ -53,33 +50,21 @@ pub fn unpackEnum(reader: anytype, comptime T: type) !T {
     const Type = assertEnumType(T);
     const tag_type = @typeInfo(Type).@"enum".tag_type;
     
-    const header = try reader.readByte();
+    // Construct the optional tag type to match T's optionality
+    const OptionalTagType = if (@typeInfo(T) == .optional) ?tag_type else tag_type;
     
-    if (header <= hdrs.POSITIVE_FIXINT_MAX) {
-        return @enumFromInt(@as(tag_type, @intCast(header)));
-    }
-
-    if (header >= hdrs.NEGATIVE_FIXINT_MIN) {
-        const value: i8 = @bitCast(header);
-        const tag_type_info = @typeInfo(tag_type);
-        if (tag_type_info.int.signedness == .signed) {
-            return @enumFromInt(@as(tag_type, value));
-        } else if (value >= 0) {
-            return @enumFromInt(@as(tag_type, @intCast(value)));
+    // Use unpackInt directly with the constructed optional tag type
+    const int_value = try unpackInt(reader, OptionalTagType);
+    
+    // Handle the optional case
+    if (@typeInfo(T) == .optional) {
+        if (int_value) |value| {
+            return @enumFromInt(value);
+        } else {
+            return null;
         }
-        return error.IntegerOverflow;
-    }
-
-    switch (header) {
-        hdrs.INT8 => return @enumFromInt(try unpackIntValue(reader, i8, tag_type)),
-        hdrs.INT16 => return @enumFromInt(try unpackIntValue(reader, i16, tag_type)),
-        hdrs.INT32 => return @enumFromInt(try unpackIntValue(reader, i32, tag_type)),
-        hdrs.INT64 => return @enumFromInt(try unpackIntValue(reader, i64, tag_type)),
-        hdrs.UINT8 => return @enumFromInt(try unpackIntValue(reader, u8, tag_type)),
-        hdrs.UINT16 => return @enumFromInt(try unpackIntValue(reader, u16, tag_type)),
-        hdrs.UINT32 => return @enumFromInt(try unpackIntValue(reader, u32, tag_type)),
-        hdrs.UINT64 => return @enumFromInt(try unpackIntValue(reader, u64, tag_type)),
-        else => return maybeUnpackNull(header, T),
+    } else {
+        return @enumFromInt(int_value);
     }
 }
 
