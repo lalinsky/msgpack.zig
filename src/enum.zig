@@ -26,10 +26,21 @@ pub fn getMaxEnumSize(comptime T: type) usize {
 }
 
 pub fn getEnumSize(comptime T: type, value: T) usize {
-    const Type = assertEnumType(T);
-    const tag_type = @typeInfo(Type).@"enum".tag_type;
-    const int_value = @intFromEnum(value);
-    return getIntSize(tag_type, int_value);
+    switch (@typeInfo(T)) {
+        .@"enum" => {
+            const tag_type = @typeInfo(T).@"enum".tag_type;
+            const int_value = @intFromEnum(value);
+            return getIntSize(tag_type, int_value);
+        },
+        .optional => |opt_info| {
+            if (value) |v| {
+                return getEnumSize(opt_info.child, v);
+            } else {
+                return 1; // size of null
+            }
+        },
+        else => @compileError("Expected enum or optional enum, got " ++ @typeName(T)),
+    }
 }
 
 pub fn packEnum(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
@@ -43,10 +54,53 @@ pub fn packEnum(writer: anytype, comptime T: type, value_or_maybe_null: T) !void
 }
 
 pub fn unpackEnum(reader: anytype, comptime T: type) !T {
-    const Type = assertEnumType(T);
-    const tag_type = @typeInfo(Type).@"enum".tag_type;
-    const int_value = try unpackInt(reader, tag_type);
-    return @enumFromInt(int_value);
+    switch (@typeInfo(T)) {
+        .@"enum" => {
+            const tag_type = @typeInfo(T).@"enum".tag_type;
+            const int_value = try unpackInt(reader, tag_type);
+            return @enumFromInt(int_value);
+        },
+        .optional => |opt_info| {
+            const header = try reader.readByte();
+            if (header == hdrs.NIL) {
+                return null;
+            }
+            
+            // Put the header back and unpack as non-optional enum
+            // We need to create a buffered reader that includes the header
+            const backup_reader = struct {
+                header: u8,
+                reader: @TypeOf(reader),
+                header_consumed: bool = false,
+                
+                const Self = @This();
+                
+                pub fn readByte(self: *Self) !u8 {
+                    if (!self.header_consumed) {
+                        self.header_consumed = true;
+                        return self.header;
+                    }
+                    return try self.reader.readByte();
+                }
+                
+                pub fn readBytesNoEof(self: *Self, buf: []u8) !void {
+                    if (!self.header_consumed and buf.len > 0) {
+                        buf[0] = self.header;
+                        self.header_consumed = true;
+                        if (buf.len > 1) {
+                            try self.reader.readBytesNoEof(buf[1..]);
+                        }
+                    } else {
+                        try self.reader.readBytesNoEof(buf);
+                    }
+                }
+            };
+            
+            var backup = backup_reader{ .header = header, .reader = reader };
+            return try unpackEnum(backup.reader(), opt_info.child);
+        },
+        else => @compileError("Expected enum or optional enum, got " ++ @typeName(T)),
+    }
 }
 
 test "getMaxEnumSize" {
@@ -127,4 +181,48 @@ test "enum edge cases" {
     const result = try unpackEnum(stream.reader(), MixedEnum);
     try std.testing.expectEqual(MixedEnum.second, result);
     try std.testing.expectEqual(11, @intFromEnum(result));
+}
+
+test "optional enum" {
+    const TestEnum = enum(u8) { foo = 1, bar = 2 };
+    const OptionalEnum = ?TestEnum;
+    
+    // Test non-null optional enum
+    {
+        var buffer = std.ArrayList(u8).init(std.testing.allocator);
+        defer buffer.deinit();
+        
+        const value: OptionalEnum = .bar;
+        try packEnum(buffer.writer(), OptionalEnum, value);
+        
+        var stream = std.io.fixedBufferStream(buffer.items);
+        const result = try unpackEnum(stream.reader(), OptionalEnum);
+        try std.testing.expectEqual(@as(OptionalEnum, .bar), result);
+    }
+    
+    // Test null optional enum
+    {
+        var buffer = std.ArrayList(u8).init(std.testing.allocator);
+        defer buffer.deinit();
+        
+        const value: OptionalEnum = null;
+        try packEnum(buffer.writer(), OptionalEnum, value);
+        
+        var stream = std.io.fixedBufferStream(buffer.items);
+        const result = try unpackEnum(stream.reader(), OptionalEnum);
+        try std.testing.expectEqual(@as(OptionalEnum, null), result);
+    }
+}
+
+test "getEnumSize with optional" {
+    const TestEnum = enum(u8) { foo = 0, bar = 150 };
+    const OptionalEnum = ?TestEnum;
+    
+    // Test non-null optional enum size
+    const value: OptionalEnum = .bar;
+    try std.testing.expectEqual(2, getEnumSize(OptionalEnum, value)); // requires u8 format
+    
+    // Test null optional enum size
+    const null_value: OptionalEnum = null;
+    try std.testing.expectEqual(1, getEnumSize(OptionalEnum, null_value)); // size of null
 }
