@@ -65,6 +65,11 @@ pub const UnionAsMapOptions = @import("union.zig").UnionAsMapOptions;
 pub const packUnion = @import("union.zig").packUnion;
 pub const unpackUnion = @import("union.zig").unpackUnion;
 
+pub const getEnumSize = @import("enum.zig").getEnumSize;
+pub const getMaxEnumSize = @import("enum.zig").getMaxEnumSize;
+pub const packEnum = @import("enum.zig").packEnum;
+pub const unpackEnum = @import("enum.zig").unpackEnum;
+
 pub const packAny = @import("any.zig").packAny;
 pub const unpackAny = @import("any.zig").unpackAny;
 
@@ -142,6 +147,10 @@ pub fn Packer(comptime Writer: type) type {
 
         pub fn writeUnion(self: Self, value: anytype) !void {
             return packUnion(self.writer, @TypeOf(value), value);
+        }
+
+        pub fn writeEnum(self: Self, value: anytype) !void {
+            return packEnum(self.writer, @TypeOf(value), value);
         }
 
         pub fn write(self: Self, value: anytype) !void {
@@ -232,6 +241,10 @@ pub fn Unpacker(comptime Reader: type) type {
             return unpackUnion(self.reader, self.allocator, T);
         }
 
+        pub fn readEnum(self: Self, comptime T: type) !T {
+            return unpackEnum(self.reader, T);
+        }
+
         pub fn read(self: Self, comptime T: type) !T {
             return unpackAny(self.reader, self.allocator, T);
         }
@@ -303,4 +316,61 @@ test "encode/decode" {
 
     try std.testing.expectEqualStrings("John", decoded.value.name);
     try std.testing.expectEqual(20, decoded.value.age);
+}
+
+test "encode/decode enum" {
+    const Status = enum(u8) { pending = 1, active = 2, inactive = 3 };
+    const PlainEnum = enum { foo, bar, baz };
+    
+    // Test enum(u8)
+    {
+        var buffer = std.ArrayList(u8).init(std.testing.allocator);
+        defer buffer.deinit();
+        
+        try encode(Status.active, buffer.writer());
+        
+        const decoded = try decodeFromSlice(Status, std.testing.allocator, buffer.items);
+        defer decoded.deinit();
+        
+        try std.testing.expectEqual(Status.active, decoded.value);
+    }
+    
+    // Test plain enum  
+    {
+        var buffer = std.ArrayList(u8).init(std.testing.allocator);
+        defer buffer.deinit();
+        
+        try encode(PlainEnum.bar, buffer.writer());
+        
+        const decoded = try decodeFromSlice(PlainEnum, std.testing.allocator, buffer.items);
+        defer decoded.deinit();
+        
+        try std.testing.expectEqual(PlainEnum.bar, decoded.value);
+    }
+    
+    // Test optional enum with null
+    {
+        var buffer = std.ArrayList(u8).init(std.testing.allocator);
+        defer buffer.deinit();
+        
+        try encode(@as(?Status, null), buffer.writer());
+        
+        const decoded = try decodeFromSlice(?Status, std.testing.allocator, buffer.items);
+        defer decoded.deinit();
+        
+        try std.testing.expectEqual(@as(?Status, null), decoded.value);
+    }
+    
+    // Test optional enum with value
+    {
+        var buffer = std.ArrayList(u8).init(std.testing.allocator);
+        defer buffer.deinit();
+        
+        try encode(@as(?Status, .pending), buffer.writer());
+        
+        const decoded = try decodeFromSlice(?Status, std.testing.allocator, buffer.items);
+        defer decoded.deinit();
+        
+        try std.testing.expectEqual(@as(?Status, .pending), decoded.value);
+    }
 }
