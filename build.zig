@@ -9,9 +9,11 @@ pub fn build(b: *std.Build) !void {
     });
 
     const tests = b.addTest(.{
-        .root_source_file = b.path("src/msgpack.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/msgpack.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const run_test = b.addRunArtifact(tests);

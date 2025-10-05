@@ -303,13 +303,13 @@ test "encode/decode" {
         age: u8,
     };
 
-    var buffer = std.ArrayList(u8).init(std.testing.allocator);
-    defer buffer.deinit();
+    var buffer = std.ArrayList(u8){};
+    defer buffer.deinit(std.testing.allocator);
 
     try encode(Message{
         .name = "John",
         .age = 20,
-    }, buffer.writer());
+    }, buffer.writer(std.testing.allocator));
 
     const decoded = try decodeFromSlice(Message, std.testing.allocator, buffer.items);
     defer decoded.deinit();
@@ -324,10 +324,10 @@ test "encode/decode enum" {
     
     // Test enum(u8)
     {
-        var buffer = std.ArrayList(u8).init(std.testing.allocator);
-        defer buffer.deinit();
+        var buffer = std.ArrayList(u8){};
+        defer buffer.deinit(std.testing.allocator);
         
-        try encode(Status.active, buffer.writer());
+        try encode(Status.active, buffer.writer(std.testing.allocator));
         
         const decoded = try decodeFromSlice(Status, std.testing.allocator, buffer.items);
         defer decoded.deinit();
@@ -337,10 +337,10 @@ test "encode/decode enum" {
     
     // Test plain enum  
     {
-        var buffer = std.ArrayList(u8).init(std.testing.allocator);
-        defer buffer.deinit();
+        var buffer = std.ArrayList(u8){};
+        defer buffer.deinit(std.testing.allocator);
         
-        try encode(PlainEnum.bar, buffer.writer());
+        try encode(PlainEnum.bar, buffer.writer(std.testing.allocator));
         
         const decoded = try decodeFromSlice(PlainEnum, std.testing.allocator, buffer.items);
         defer decoded.deinit();
@@ -350,10 +350,10 @@ test "encode/decode enum" {
     
     // Test optional enum with null
     {
-        var buffer = std.ArrayList(u8).init(std.testing.allocator);
-        defer buffer.deinit();
+        var buffer = std.ArrayList(u8){};
+        defer buffer.deinit(std.testing.allocator);
         
-        try encode(@as(?Status, null), buffer.writer());
+        try encode(@as(?Status, null), buffer.writer(std.testing.allocator));
         
         const decoded = try decodeFromSlice(?Status, std.testing.allocator, buffer.items);
         defer decoded.deinit();
@@ -363,10 +363,10 @@ test "encode/decode enum" {
     
     // Test optional enum with value
     {
-        var buffer = std.ArrayList(u8).init(std.testing.allocator);
-        defer buffer.deinit();
+        var buffer = std.ArrayList(u8){};
+        defer buffer.deinit(std.testing.allocator);
         
-        try encode(@as(?Status, .pending), buffer.writer());
+        try encode(@as(?Status, .pending), buffer.writer(std.testing.allocator));
         
         const decoded = try decodeFromSlice(?Status, std.testing.allocator, buffer.items);
         defer decoded.deinit();
