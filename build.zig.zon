@@ -1,6 +1,7 @@
 .{
     .name = .msgpack,
     .version = "0.4.0",
+    .minimum_zig_version = "0.15.1",
     .dependencies = .{},
     .fingerprint = 0x6733a7563cbdeb64,
     .paths = .{
