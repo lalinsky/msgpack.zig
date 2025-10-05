@@ -111,10 +111,10 @@ test "packMap managed" {
 
     try map.put(1, 2);
 
-    var buf = std.ArrayList(u8).init(std.testing.allocator);
-    defer buf.deinit();
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(std.testing.allocator);
 
-    try packMap(buf.writer(), map);
+    try packMap(buf.writer(std.testing.allocator), map);
 
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0x81, 0x01, 0x02 }, buf.items);
 }
@@ -125,10 +125,10 @@ test "packMap unmanaged" {
 
     try map.put(1, 2);
 
-    var buf = std.ArrayList(u8).init(std.testing.allocator);
-    defer buf.deinit();
+    var buf = std.ArrayList(u8){};
+    defer buf.deinit(std.testing.allocator);
 
-    try packMap(buf.writer(), map.unmanaged);
+    try packMap(buf.writer(std.testing.allocator), map.unmanaged);
 
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0x81, 0x01, 0x02 }, buf.items);
 }

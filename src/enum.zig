@@ -92,10 +92,10 @@ test "pack/unpack enum" {
     
     // Test plain enum
     {
-        var buffer = std.ArrayList(u8).init(std.testing.allocator);
-        defer buffer.deinit();
+        var buffer = std.ArrayList(u8){};
+        defer buffer.deinit(std.testing.allocator);
         
-        try packEnum(buffer.writer(), PlainEnum, .bar);
+        try packEnum(buffer.writer(std.testing.allocator), PlainEnum, .bar);
         
         var stream = std.io.fixedBufferStream(buffer.items);
         const result = try unpackEnum(stream.reader(), PlainEnum);
@@ -104,10 +104,10 @@ test "pack/unpack enum" {
     
     // Test enum(u8)
     {
-        var buffer = std.ArrayList(u8).init(std.testing.allocator);
-        defer buffer.deinit();
+        var buffer = std.ArrayList(u8){};
+        defer buffer.deinit(std.testing.allocator);
         
-        try packEnum(buffer.writer(), U8Enum, .bar);
+        try packEnum(buffer.writer(std.testing.allocator), U8Enum, .bar);
         
         var stream = std.io.fixedBufferStream(buffer.items);
         const result = try unpackEnum(stream.reader(), U8Enum);
@@ -116,10 +116,10 @@ test "pack/unpack enum" {
     
     // Test enum(u16) 
     {
-        var buffer = std.ArrayList(u8).init(std.testing.allocator);
-        defer buffer.deinit();
+        var buffer = std.ArrayList(u8){};
+        defer buffer.deinit(std.testing.allocator);
         
-        try packEnum(buffer.writer(), U16Enum, .alpha);
+        try packEnum(buffer.writer(std.testing.allocator), U16Enum, .alpha);
         
         var stream = std.io.fixedBufferStream(buffer.items);
         const result = try unpackEnum(stream.reader(), U16Enum);
@@ -137,10 +137,10 @@ test "enum edge cases" {
         fourth, // auto-assigned to 21
     };
     
-    var buffer = std.ArrayList(u8).init(std.testing.allocator);
-    defer buffer.deinit();
+    var buffer = std.ArrayList(u8){};
+    defer buffer.deinit(std.testing.allocator);
     
-    try packEnum(buffer.writer(), MixedEnum, .second);
+    try packEnum(buffer.writer(std.testing.allocator), MixedEnum, .second);
     
     var stream = std.io.fixedBufferStream(buffer.items);
     const result = try unpackEnum(stream.reader(), MixedEnum);
@@ -154,11 +154,11 @@ test "optional enum" {
     
     // Test non-null optional enum
     {
-        var buffer = std.ArrayList(u8).init(std.testing.allocator);
-        defer buffer.deinit();
+        var buffer = std.ArrayList(u8){};
+        defer buffer.deinit(std.testing.allocator);
         
         const value: OptionalEnum = .bar;
-        try packEnum(buffer.writer(), OptionalEnum, value);
+        try packEnum(buffer.writer(std.testing.allocator), OptionalEnum, value);
         
         var stream = std.io.fixedBufferStream(buffer.items);
         const result = try unpackEnum(stream.reader(), OptionalEnum);
@@ -167,11 +167,11 @@ test "optional enum" {
     
     // Test null optional enum
     {
-        var buffer = std.ArrayList(u8).init(std.testing.allocator);
-        defer buffer.deinit();
+        var buffer = std.ArrayList(u8){};
+        defer buffer.deinit(std.testing.allocator);
         
         const value: OptionalEnum = null;
-        try packEnum(buffer.writer(), OptionalEnum, value);
+        try packEnum(buffer.writer(std.testing.allocator), OptionalEnum, value);
         
         var stream = std.io.fixedBufferStream(buffer.items);
         const result = try unpackEnum(stream.reader(), OptionalEnum);
