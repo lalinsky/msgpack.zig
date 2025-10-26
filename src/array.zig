@@ -31,7 +31,7 @@ pub fn sizeOfPackedArray(len: usize) !usize {
     return try sizeOfPackedArrayHeader(len) + len;
 }
 
-pub fn packArrayHeader(writer: anytype, len: usize) !void {
+pub fn packArrayHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= hdrs.FIXARRAY_MAX - hdrs.FIXARRAY_MIN) {
         try writer.writeByte(hdrs.FIXARRAY_MIN + @as(u8, @intCast(len)));
     } else if (len <= std.math.maxInt(u16)) {
@@ -45,8 +45,8 @@ pub fn packArrayHeader(writer: anytype, len: usize) !void {
     }
 }
 
-pub fn unpackArrayHeader(reader: anytype, comptime T: type) !T {
-    const header = try reader.readByte();
+pub fn unpackArrayHeader(reader: *std.Io.Reader, comptime T: type) !T {
+    const header = try reader.takeByte();
     switch (header) {
         hdrs.FIXARRAY_MIN...hdrs.FIXARRAY_MAX => {
             return header - hdrs.FIXARRAY_MIN;
@@ -63,7 +63,7 @@ pub fn unpackArrayHeader(reader: anytype, comptime T: type) !T {
     }
 }
 
-pub fn packArray(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
+pub fn packArray(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T) !void {
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
     try packArrayHeader(writer, value.len);
 
@@ -72,7 +72,7 @@ pub fn packArray(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
     }
 }
 
-pub fn unpackArray(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
+pub fn unpackArray(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
     const len = if (isOptional(T))
         try unpackArrayHeader(reader, ?u32) orelse return null
     else
@@ -90,7 +90,7 @@ pub fn unpackArray(reader: anytype, allocator: std.mem.Allocator, comptime T: ty
     return data;
 }
 
-pub fn unpackArrayInto(reader: anytype, allocator: std.mem.Allocator, comptime Item: type, buffer: []Item) ![]Item {
+pub fn unpackArrayInto(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime Item: type, buffer: []Item) ![]Item {
     const len = try unpackArrayHeader(reader, u32);
 
     if (buffer.len < len) {
@@ -126,16 +126,16 @@ const packed_abc = [_]u8{ 0x93, 0x61, 0x62, 0x63 };
 
 test "packArray: abc" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packArray(stream.writer(), []const u8, "abc");
-    try std.testing.expectEqualSlices(u8, &packed_abc, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packArray(&writer, []const u8, "abc");
+    try std.testing.expectEqualSlices(u8, &packed_abc, writer.buffered());
 }
 
 test "packArray: null" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packArray(stream.writer(), ?[]const u8, null);
-    try std.testing.expectEqualSlices(u8, &packed_null, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packArray(&writer, ?[]const u8, null);
+    try std.testing.expectEqualSlices(u8, &packed_null, writer.buffered());
 }
 
 test "sizeOfPackedArray" {

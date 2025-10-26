@@ -62,7 +62,7 @@ fn strPrefix(src: []const u8, len: usize) []const u8 {
     return src[0..@min(src.len, len)];
 }
 
-pub fn packUnionAsMap(writer: anytype, comptime T: type, value: T, opts: UnionAsMapOptions) !void {
+pub fn packUnionAsMap(writer: *std.Io.Writer, comptime T: type, value: T, opts: UnionAsMapOptions) !void {
     const type_info = @typeInfo(T);
     const fields = type_info.@"union".fields;
 
@@ -88,7 +88,7 @@ pub fn packUnionAsMap(writer: anytype, comptime T: type, value: T, opts: UnionAs
     }
 }
 
-pub fn packUnionAsTagged(writer: anytype, comptime T: type, value: T, opts: UnionAsTaggedOptions) !void {
+pub fn packUnionAsTagged(writer: *std.Io.Writer, comptime T: type, value: T, opts: UnionAsTaggedOptions) !void {
     const type_info = @typeInfo(T);
     const fields = type_info.@"union".fields;
 
@@ -130,7 +130,7 @@ pub fn packUnionAsTagged(writer: anytype, comptime T: type, value: T, opts: Unio
     }
 }
 
-pub fn packUnion(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
+pub fn packUnion(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T) !void {
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
     const Type = @TypeOf(value);
     const type_info = @typeInfo(Type);
@@ -150,7 +150,7 @@ pub fn packUnion(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
     }
 }
 
-pub fn unpackUnionAsMap(reader: anytype, allocator: std.mem.Allocator, comptime T: type, opts: UnionAsMapOptions) !T {
+pub fn unpackUnionAsMap(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, opts: UnionAsMapOptions) !T {
     const len = if (@typeInfo(T) == .optional)
         try unpackMapHeader(reader, ?u16) orelse return null
     else
@@ -210,7 +210,7 @@ pub fn unpackUnionAsMap(reader: anytype, allocator: std.mem.Allocator, comptime 
     return result;
 }
 
-pub fn unpackUnionAsTagged(reader: anytype, allocator: std.mem.Allocator, comptime T: type, opts: UnionAsTaggedOptions) !T {
+pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, opts: UnionAsTaggedOptions) !T {
     const len = if (@typeInfo(T) == .optional)
         try unpackMapHeader(reader, ?u16) orelse return null
     else
@@ -278,7 +278,7 @@ pub fn unpackUnionAsTagged(reader: anytype, allocator: std.mem.Allocator, compti
     return error.UnknownUnionField;
 }
 
-pub fn unpackUnion(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
+pub fn unpackUnion(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
     const Type = NonOptional(T);
 
     const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_union_format;
@@ -323,29 +323,29 @@ const msg2_packed = [_]u8{
 
 test "writeUnion: int field" {
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packUnion(stream.writer(), Msg1, msg1);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packUnion(&writer, Msg1, msg1);
 
-    try std.testing.expectEqualSlices(u8, &msg1_packed, stream.getWritten());
+    try std.testing.expectEqualSlices(u8, &msg1_packed, writer.buffered());
 }
 
 test "writeUnion: void field" {
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packUnion(stream.writer(), Msg2, msg2);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packUnion(&writer, Msg2, msg2);
 
-    try std.testing.expectEqualSlices(u8, &msg2_packed, stream.getWritten());
+    try std.testing.expectEqualSlices(u8, &msg2_packed, writer.buffered());
 }
 
 test "readUnion: int field" {
-    var stream = std.io.fixedBufferStream(&msg1_packed);
-    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg1);
+    var reader = std.Io.Reader.fixed(&msg1_packed);
+    const value = try unpackUnion(&reader, NoAllocator.allocator(), Msg1);
     try std.testing.expectEqual(msg1, value);
 }
 
 test "readUnion: void field" {
-    var stream = std.io.fixedBufferStream(&msg2_packed);
-    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg2);
+    var reader = std.Io.Reader.fixed(&msg2_packed);
+    const value = try unpackUnion(&reader, NoAllocator.allocator(), Msg2);
     try std.testing.expectEqual(msg2, value);
 }
 
@@ -401,40 +401,40 @@ const msg4_get_packed = [_]u8{
 
 test "writeUnion: tagged format with field name" {
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packUnion(stream.writer(), Msg3, msg3_get);
-    try std.testing.expectEqualSlices(u8, &msg3_get_packed, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packUnion(&writer, Msg3, msg3_get);
+    try std.testing.expectEqualSlices(u8, &msg3_get_packed, writer.buffered());
 }
 
 test "writeUnion: tagged format with multiple fields" {
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packUnion(stream.writer(), Msg3, msg3_put);
-    try std.testing.expectEqualSlices(u8, &msg3_put_packed, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packUnion(&writer, Msg3, msg3_put);
+    try std.testing.expectEqualSlices(u8, &msg3_put_packed, writer.buffered());
 }
 
 test "writeUnion: tagged format with field index" {
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packUnion(stream.writer(), Msg4, msg4_get);
-    try std.testing.expectEqualSlices(u8, &msg4_get_packed, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packUnion(&writer, Msg4, msg4_get);
+    try std.testing.expectEqualSlices(u8, &msg4_get_packed, writer.buffered());
 }
 
 test "readUnion: tagged format with field name" {
-    var stream = std.io.fixedBufferStream(&msg3_get_packed);
-    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg3);
+    var reader = std.Io.Reader.fixed(&msg3_get_packed);
+    const value = try unpackUnion(&reader, NoAllocator.allocator(), Msg3);
     try std.testing.expectEqual(42, value.get.key);
 }
 
 test "readUnion: tagged format with multiple fields" {
-    var stream = std.io.fixedBufferStream(&msg3_put_packed);
-    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg3);
+    var reader = std.Io.Reader.fixed(&msg3_put_packed);
+    const value = try unpackUnion(&reader, NoAllocator.allocator(), Msg3);
     try std.testing.expectEqual(10, value.put.key);
     try std.testing.expectEqual(20, value.put.val);
 }
 
 test "readUnion: tagged format with field index" {
-    var stream = std.io.fixedBufferStream(&msg4_get_packed);
-    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg4);
+    var reader = std.Io.Reader.fixed(&msg4_get_packed);
+    const value = try unpackUnion(&reader, NoAllocator.allocator(), Msg4);
     try std.testing.expectEqual(99, value.get.key);
 }
