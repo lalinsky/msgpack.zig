@@ -5,7 +5,6 @@ const NonOptional = @import("utils.zig").NonOptional;
 
 const packNull = @import("null.zig").packNull;
 const unpackNull = @import("null.zig").unpackNull;
-const isNullError = @import("null.zig").isNullError;
 
 const getBoolSize = @import("bool.zig").getBoolSize;
 const packBool = @import("bool.zig").packBool;
@@ -142,12 +141,10 @@ pub fn unpackAny(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime 
             }
         },
         .optional => |opt_info| {
-            return unpackAny(reader, allocator, opt_info.child) catch |err| {
-                if (isNullError(err)) {
-                    return null;
-                }
-                return err;
+            unpackNull(reader) catch {
+                return try unpackAny(reader, allocator, opt_info.child);
             };
+            return null;
         },
         else => {},
     }

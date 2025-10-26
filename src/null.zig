@@ -13,8 +13,12 @@ pub fn packNull(writer: *std.Io.Writer) !void {
 }
 
 pub fn unpackNull(reader: *std.Io.Reader) !void {
-    const header = try reader.takeByte();
-    _ = try maybeUnpackNull(header, ?void);
+    const header = try reader.peekByte();
+    if (header == hdrs.NIL) {
+        reader.toss(1);
+        return;
+    }
+    return error.InvalidFormat;
 }
 
 pub fn maybePackNull(writer: *std.Io.Writer, comptime T: type, value: T) !?NonOptional(T) {
@@ -27,10 +31,6 @@ pub fn maybePackNull(writer: *std.Io.Writer, comptime T: type, value: T) !?NonOp
         }
     }
     return value;
-}
-
-pub fn isNullError(err: anyerror) bool {
-    return err == error.Null;
 }
 
 pub fn maybeUnpackNull(header: u8, comptime T: type) !T {
