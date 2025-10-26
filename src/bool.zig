@@ -27,16 +27,16 @@ inline fn assertBoolType(T: type) void {
     }
 }
 
-pub fn packBool(writer: anytype, value_or_maybe_null: anytype) !void {
+pub fn packBool(writer: *std.Io.Writer, value_or_maybe_null: anytype) !void {
     const T = forceBoolType(value_or_maybe_null);
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
     try writer.writeByte(if (value) hdrs.TRUE else hdrs.FALSE);
 }
 
-pub fn unpackBool(reader: anytype, comptime T: type) !T {
+pub fn unpackBool(reader: *std.Io.Reader, comptime T: type) !T {
     assertBoolType(T);
-    const header = try reader.readByte();
+    const header = try reader.takeByte();
     switch (header) {
         hdrs.TRUE => return true,
         hdrs.FALSE => return false,
@@ -51,48 +51,48 @@ const packed_zero = [_]u8{0x00};
 
 test "packBool: false" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packBool(stream.writer(), false);
-    try std.testing.expectEqualSlices(u8, &packed_false, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packBool(&writer, false);
+    try std.testing.expectEqualSlices(u8, &packed_false, writer.buffered());
 }
 
 test "packBool: true" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packBool(stream.writer(), true);
-    try std.testing.expectEqualSlices(u8, &packed_true, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packBool(&writer, true);
+    try std.testing.expectEqualSlices(u8, &packed_true, writer.buffered());
 }
 
 test "packBool: null" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packBool(stream.writer(), null);
-    try std.testing.expectEqualSlices(u8, &packed_null, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packBool(&writer, null);
+    try std.testing.expectEqualSlices(u8, &packed_null, writer.buffered());
 }
 
 test "unpackBool: false" {
-    var stream = std.io.fixedBufferStream(&packed_false);
-    try std.testing.expectEqual(false, try unpackBool(stream.reader(), bool));
+    var reader = std.Io.Reader.fixed(&packed_false);
+    try std.testing.expectEqual(false, try unpackBool(&reader, bool));
 }
 
 test "unpackBool: true" {
-    var stream = std.io.fixedBufferStream(&packed_true);
-    try std.testing.expectEqual(true, try unpackBool(stream.reader(), bool));
+    var reader = std.Io.Reader.fixed(&packed_true);
+    try std.testing.expectEqual(true, try unpackBool(&reader, bool));
 }
 
 test "unpackBool: null into optional" {
-    var stream = std.io.fixedBufferStream(&packed_null);
-    try std.testing.expectEqual(null, try unpackBool(stream.reader(), ?bool));
+    var reader = std.Io.Reader.fixed(&packed_null);
+    try std.testing.expectEqual(null, try unpackBool(&reader, ?bool));
 }
 
 test "unpackBool: null into non-optional" {
-    var stream = std.io.fixedBufferStream(&packed_null);
-    try std.testing.expectError(error.Null, unpackBool(stream.reader(), bool));
+    var reader = std.Io.Reader.fixed(&packed_null);
+    try std.testing.expectError(error.Null, unpackBool(&reader, bool));
 }
 
 test "unpackBool: wrong type" {
-    var stream = std.io.fixedBufferStream(&packed_zero);
-    try std.testing.expectError(error.InvalidFormat, unpackBool(stream.reader(), bool));
+    var reader = std.Io.Reader.fixed(&packed_zero);
+    try std.testing.expectError(error.InvalidFormat, unpackBool(&reader, bool));
 }
 
 test "getBoolSize" {

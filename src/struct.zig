@@ -89,7 +89,7 @@ fn strPrefix(src: []const u8, len: usize) []const u8 {
     return src[0..@min(src.len, len)];
 }
 
-pub fn packStructAsMap(writer: anytype, comptime T: type, value: T, comptime opts: StructAsMapOptions) !void {
+pub fn packStructAsMap(writer: *std.Io.Writer, comptime T: type, value: T, comptime opts: StructAsMapOptions) !void {
     const type_info = @typeInfo(T);
     const fields = type_info.@"struct".fields;
     const FieldEnum = std.meta.FieldEnum(T);
@@ -118,7 +118,7 @@ pub fn packStructAsMap(writer: anytype, comptime T: type, value: T, comptime opt
     }
 }
 
-pub fn packStructAsArray(writer: anytype, comptime T: type, value: T, comptime opts: StructAsArrayOptions) !void {
+pub fn packStructAsArray(writer: *std.Io.Writer, comptime T: type, value: T, comptime opts: StructAsArrayOptions) !void {
     const type_info = @typeInfo(T);
     const fields = type_info.@"struct".fields;
 
@@ -131,7 +131,7 @@ pub fn packStructAsArray(writer: anytype, comptime T: type, value: T, comptime o
     _ = opts;
 }
 
-pub fn packStruct(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
+pub fn packStruct(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T) !void {
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
     const Type = @TypeOf(value);
     const type_info = @typeInfo(Type);
@@ -156,7 +156,7 @@ pub fn packStruct(writer: anytype, comptime T: type, value_or_maybe_null: T) !vo
     }
 }
 
-pub fn unpackStructFromMapBody(reader: anytype, allocator: std.mem.Allocator, comptime T: type, field_count: u16, comptime opts: StructAsMapOptions) !T {
+pub fn unpackStructFromMapBody(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, field_count: u16, comptime opts: StructAsMapOptions) !T {
     const Type = NonOptional(T);
     const type_info = @typeInfo(Type);
     const fields = type_info.@"struct".fields;
@@ -242,7 +242,7 @@ pub fn unpackStructFromMapBody(reader: anytype, allocator: std.mem.Allocator, co
     return result;
 }
 
-pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsMapOptions) !T {
+pub fn unpackStructAsMap(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsMapOptions) !T {
     const len = if (@typeInfo(T) == .optional)
         try unpackMapHeader(reader, ?u16) orelse return null
     else
@@ -251,7 +251,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
     return unpackStructFromMapBody(reader, allocator, T, len, opts);
 }
 
-pub fn unpackStructAsArray(reader: anytype, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsArrayOptions) !T {
+pub fn unpackStructAsArray(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, comptime opts: StructAsArrayOptions) !T {
     const len = if (@typeInfo(T) == .optional)
         try unpackArrayHeader(reader, ?u16) orelse return null
     else
@@ -275,7 +275,7 @@ pub fn unpackStructAsArray(reader: anytype, allocator: std.mem.Allocator, compti
     return result;
 }
 
-pub fn unpackStruct(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
+pub fn unpackStruct(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
     const Type = NonOptional(T);
 
     const has_custom_read_fn = std.meta.hasFn(Type, "msgpackRead");
@@ -306,8 +306,8 @@ test "writeStruct: map_by_index" {
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packStruct(stream.writer(), Msg, msg);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packStruct(&writer, Msg, msg);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x82, // map with 2 elements
@@ -315,7 +315,7 @@ test "writeStruct: map_by_index" {
         0x01, // value: u32(1)
         0x01, // key: fixint 1
         0x02, // value: i32(2)
-    }, stream.getWritten());
+    }, writer.buffered());
 }
 
 test "writeStruct: map by field_name" {
@@ -330,8 +330,8 @@ test "writeStruct: map by field_name" {
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packStruct(stream.writer(), Msg, msg);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packStruct(&writer, Msg, msg);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x82, // map with 2 elements
@@ -339,7 +339,7 @@ test "writeStruct: map by field_name" {
         0x01, // value: u32(1)
         0xa1, 'b', // "b"
         0x02, // value: i32(2)
-    }, stream.getWritten());
+    }, writer.buffered());
 }
 
 test "writeStruct: map by field_name_prefix" {
@@ -354,8 +354,8 @@ test "writeStruct: map by field_name_prefix" {
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packStruct(stream.writer(), Msg, msg);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packStruct(&writer, Msg, msg);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x82, // map with 2 elements
@@ -363,7 +363,7 @@ test "writeStruct: map by field_name_prefix" {
         0x01, // value: u32(1)
         0xa1, 'b', // "b"
         0x02, // value: i32(2)
-    }, stream.getWritten());
+    }, writer.buffered());
 }
 
 test "writeStruct: map by custom key" {
@@ -385,8 +385,8 @@ test "writeStruct: map by custom key" {
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packStruct(stream.writer(), Msg, msg);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packStruct(&writer, Msg, msg);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x82, // map with 2 elements
@@ -394,7 +394,7 @@ test "writeStruct: map by custom key" {
         0x01, // value: u32(1)
         102, // key: 102
         0x02, // value: i32(2)
-    }, stream.getWritten());
+    }, writer.buffered());
 }
 
 test "writeStruct: array" {
@@ -409,14 +409,14 @@ test "writeStruct: array" {
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packStruct(stream.writer(), Msg, msg);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packStruct(&writer, Msg, msg);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x92, // array with 2 elements
         0x01, // value: u32(1)
         0x02, // value: i32(2)
-    }, stream.getWritten());
+    }, writer.buffered());
 }
 
 test "writeStruct: omit defaults" {
@@ -431,14 +431,14 @@ test "writeStruct: omit defaults" {
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packStruct(stream.writer(), Msg, msg);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packStruct(&writer, Msg, msg);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x81, // map with 1 element
         0x01, // key: fixint 1
         0x02, // value: i32(2)
-    }, stream.getWritten());
+    }, writer.buffered());
 }
 
 test "writeStruct: omit nulls" {
@@ -453,14 +453,14 @@ test "writeStruct: omit nulls" {
     const msg = Msg{ .a = null, .b = 2 };
 
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packStruct(stream.writer(), Msg, msg);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packStruct(&writer, Msg, msg);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x81, // map with 1 element
         0x01, // key: fixint 1
         0x02, // value: i32(2)
-    }, stream.getWritten());
+    }, writer.buffered());
 }
 
 test "readStruct: map_by_index" {
@@ -480,8 +480,8 @@ test "readStruct: map_by_index" {
         0x01, // key: fixint 1
         0x02, // value: i32(2)
     };
-    var stream = std.io.fixedBufferStream(&buffer);
-    const value = try unpackStruct(stream.reader(), NoAllocator.allocator(), Msg);
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, value);
 }
 
@@ -505,8 +505,8 @@ test "readStruct: map_by_name" {
         0xa1, 'b', // "b"
         0x02, // value: i32(2)
     };
-    var stream = std.io.fixedBufferStream(&buffer);
-    const value = try unpackStruct(stream.reader(), NoAllocator.allocator(), Msg);
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, value);
 }
 
@@ -525,8 +525,8 @@ test "readStruct: array" {
         0x01, // value: u32(1)
         0x02, // value: i32(2)
     };
-    var stream = std.io.fixedBufferStream(&buffer);
-    const value = try unpackStruct(stream.reader(), NoAllocator.allocator(), Msg);
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, value);
 }
 
@@ -548,8 +548,8 @@ test "readStruct: omit nulls" {
         0x00, // 0
         0x01, // value: u32(1)
     };
-    var stream = std.io.fixedBufferStream(&buffer);
-    const value = try unpackStruct(stream.reader(), NoAllocator.allocator(), Msg);
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
     try std.testing.expectEqual(Msg{ .a = 1, .b = null }, value);
 }
 
@@ -571,8 +571,8 @@ test "readStruct: omit defaults" {
         0x00, // 0
         0x01, // value: u32(1)
     };
-    var stream = std.io.fixedBufferStream(&buffer);
-    const value = try unpackStruct(stream.reader(), NoAllocator.allocator(), Msg);
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
     try std.testing.expectEqual(Msg{ .a = 1, .b = 100 }, value);
 }
 
@@ -591,8 +591,8 @@ test "readStruct: missing field" {
         0x00, // 0
         0x01, // value: u32(1)
     };
-    var stream = std.io.fixedBufferStream(&buffer);
-    const value = unpackStruct(stream.reader(), NoAllocator.allocator(), Msg);
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = unpackStruct(&reader, NoAllocator.allocator(), Msg);
     try std.testing.expectError(error.MissingStructFields, value);
 }
 
@@ -613,14 +613,14 @@ test "writeStruct: optional struct field with null default" {
     const msg = OuterStruct{ .a = 42 };
 
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packStruct(stream.writer(), OuterStruct, msg);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packStruct(&writer, OuterStruct, msg);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x81, // map with 1 element
         0xa1, 'a', // "a"
         42, // value: u32(42)
-    }, stream.getWritten());
+    }, writer.buffered());
 }
 
 test "readStruct: msgpackFieldKey" {
@@ -647,7 +647,7 @@ test "readStruct: msgpackFieldKey" {
         102, // key: 102
         0x02, // value: i32(2)
     };
-    var stream = std.io.fixedBufferStream(&buffer);
-    const value = try unpackStruct(stream.reader(), NoAllocator.allocator(), Msg);
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, value);
 }

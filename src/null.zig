@@ -8,16 +8,16 @@ pub fn getNullSize() usize {
     return 1;
 }
 
-pub fn packNull(writer: anytype) !void {
+pub fn packNull(writer: *std.Io.Writer) !void {
     try writer.writeByte(hdrs.NIL);
 }
 
-pub fn unpackNull(reader: anytype) !void {
-    const header = try reader.readByte();
+pub fn unpackNull(reader: *std.Io.Reader) !void {
+    const header = try reader.takeByte();
     _ = try maybeUnpackNull(header, ?void);
 }
 
-pub fn maybePackNull(writer: anytype, comptime T: type, value: T) !?NonOptional(T) {
+pub fn maybePackNull(writer: *std.Io.Writer, comptime T: type, value: T) !?NonOptional(T) {
     if (@typeInfo(T) == .optional) {
         if (value == null) {
             try packNull(writer);
@@ -45,19 +45,19 @@ const packed_zero = [_]u8{0x00};
 
 test "packNull" {
     var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packNull(stream.writer());
-    try std.testing.expectEqualSlices(u8, &packed_null, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packNull(&writer);
+    try std.testing.expectEqualSlices(u8, &packed_null, writer.buffered());
 }
 
 test "unpackNull" {
-    var stream = std.io.fixedBufferStream(&packed_null);
-    try unpackNull(stream.reader());
+    var reader = std.Io.Reader.fixed(&packed_null);
+    try unpackNull(&reader);
 }
 
 test "unpackNull: wrong data" {
-    var stream = std.io.fixedBufferStream(&packed_zero);
-    try std.testing.expectError(error.InvalidFormat, unpackNull(stream.reader()));
+    var reader = std.Io.Reader.fixed(&packed_zero);
+    try std.testing.expectError(error.InvalidFormat, unpackNull(&reader));
 }
 
 test "getMaxNullSize/getNullSize" {

@@ -75,7 +75,7 @@ pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
     @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
 }
 
-pub fn packAny(writer: anytype, value: anytype) !void {
+pub fn packAny(writer: *std.Io.Writer, value: anytype) !void {
     const T = @TypeOf(value);
     switch (@typeInfo(T)) {
         .void => return packNull(writer),
@@ -123,7 +123,7 @@ pub fn packAny(writer: anytype, value: anytype) !void {
     @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
 }
 
-pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
+pub fn unpackAny(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
     switch (@typeInfo(T)) {
         .void => return unpackNull(reader),
         .bool => return unpackBool(reader, T),
@@ -156,74 +156,74 @@ pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type
 
 test "packAny/unpackAny: bool" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packAny(stream.writer(), true);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packAny(&writer, true);
 
-    stream.reset();
-    try std.testing.expectEqual(true, try unpackAny(stream.reader(), std.testing.allocator, bool));
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    try std.testing.expectEqual(true, try unpackAny(&reader, std.testing.allocator, bool));
 }
 
 test "packAny/unpackAny: optional bool" {
     const values = [_]?bool{ true, null };
     for (values) |value| {
         var buffer: [16]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        try packAny(stream.writer(), value);
+        var writer = std.Io.Writer.fixed(&buffer);
+        try packAny(&writer, value);
 
-        stream.reset();
-        try std.testing.expectEqual(value, try unpackAny(stream.reader(), std.testing.allocator, ?bool));
+        var reader = std.Io.Reader.fixed(writer.buffered());
+        try std.testing.expectEqual(value, try unpackAny(&reader, std.testing.allocator, ?bool));
     }
 }
 
 test "packAny/unpackAny: int" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packAny(stream.writer(), -42);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packAny(&writer, -42);
 
-    stream.reset();
-    try std.testing.expectEqual(-42, try unpackAny(stream.reader(), std.testing.allocator, i32));
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    try std.testing.expectEqual(-42, try unpackAny(&reader, std.testing.allocator, i32));
 }
 
 test "packAny/unpackAny: optional int" {
     const values = [_]?i32{ -42, null };
     for (values) |value| {
         var buffer: [16]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        try packAny(stream.writer(), value);
+        var writer = std.Io.Writer.fixed(&buffer);
+        try packAny(&writer, value);
 
-        stream.reset();
-        try std.testing.expectEqual(value, try unpackAny(stream.reader(), std.testing.allocator, ?i32));
+        var reader = std.Io.Reader.fixed(writer.buffered());
+        try std.testing.expectEqual(value, try unpackAny(&reader, std.testing.allocator, ?i32));
     }
 }
 
 test "packAny/unpackAny: float" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packAny(stream.writer(), 3.14);
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packAny(&writer, 3.14);
 
-    stream.reset();
-    try std.testing.expectEqual(3.14, try unpackAny(stream.reader(), std.testing.allocator, f32));
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    try std.testing.expectEqual(3.14, try unpackAny(&reader, std.testing.allocator, f32));
 }
 
 test "packAny/unpackAny: optional float" {
     const values = [_]?f32{ 3.14, null };
     for (values) |value| {
         var buffer: [16]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        try packAny(stream.writer(), value);
+        var writer = std.Io.Writer.fixed(&buffer);
+        try packAny(&writer, value);
 
-        stream.reset();
-        try std.testing.expectEqual(value, try unpackAny(stream.reader(), std.testing.allocator, ?f32));
+        var reader = std.Io.Reader.fixed(writer.buffered());
+        try std.testing.expectEqual(value, try unpackAny(&reader, std.testing.allocator, ?f32));
     }
 }
 
 test "packAny/unpackAny: string" {
     var buffer: [32]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packAny(stream.writer(), "hello");
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packAny(&writer, "hello");
 
-    stream.reset();
-    const result = try unpackAny(stream.reader(), std.testing.allocator, []const u8);
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    const result = try unpackAny(&reader, std.testing.allocator, []const u8);
     defer std.testing.allocator.free(result);
     try std.testing.expectEqualStrings("hello", result);
 }
@@ -232,11 +232,11 @@ test "packAny/unpackAny: optional string" {
     const values = [_]?[]const u8{ "hello", null };
     for (values) |value| {
         var buffer: [32]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        try packAny(stream.writer(), value);
+        var writer = std.Io.Writer.fixed(&buffer);
+        try packAny(&writer, value);
 
-        stream.reset();
-        const result = try unpackAny(stream.reader(), std.testing.allocator, ?[]const u8);
+        var reader = std.Io.Reader.fixed(writer.buffered());
+        const result = try unpackAny(&reader, std.testing.allocator, ?[]const u8);
         defer if (result) |str| std.testing.allocator.free(str);
         if (value) |str| {
             try std.testing.expectEqualStrings(str, result.?);
@@ -248,12 +248,12 @@ test "packAny/unpackAny: optional string" {
 
 test "packAny/unpackAny: array" {
     var buffer: [64]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var writer = std.Io.Writer.fixed(&buffer);
     const array = [_]i32{ 1, 2, 3, 4, 5 };
-    try packAny(stream.writer(), &array);
+    try packAny(&writer, &array);
 
-    stream.reset();
-    const result = try unpackAny(stream.reader(), std.testing.allocator, []const i32);
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    const result = try unpackAny(&reader, std.testing.allocator, []const i32);
     defer std.testing.allocator.free(result);
     try std.testing.expectEqualSlices(i32, &array, result);
 }
@@ -263,11 +263,11 @@ test "packAny/unpackAny: optional array" {
     const values = [_]?[]const i32{ &array, null };
     for (values) |value| {
         var buffer: [64]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        try packAny(stream.writer(), value);
+        var writer = std.Io.Writer.fixed(&buffer);
+        try packAny(&writer, value);
 
-        stream.reset();
-        const result = try unpackAny(stream.reader(), std.testing.allocator, ?[]const i32);
+        var reader = std.Io.Reader.fixed(writer.buffered());
+        const result = try unpackAny(&reader, std.testing.allocator, ?[]const i32);
         defer if (result) |arr| std.testing.allocator.free(arr);
         if (value) |arr| {
             try std.testing.expectEqualSlices(i32, arr, result.?);
@@ -283,12 +283,12 @@ test "packAny/unpackAny: struct" {
         y: i32,
     };
     var buffer: [64]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var writer = std.Io.Writer.fixed(&buffer);
     const point = Point{ .x = 10, .y = 20 };
-    try packAny(stream.writer(), point);
+    try packAny(&writer, point);
 
-    stream.reset();
-    const result = try unpackAny(stream.reader(), std.testing.allocator, Point);
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    const result = try unpackAny(&reader, std.testing.allocator, Point);
     try std.testing.expectEqualDeep(point, result);
 }
 
@@ -301,11 +301,11 @@ test "packAny/unpackAny: optional struct" {
     const values = [_]?Point{ point, null };
     for (values) |value| {
         var buffer: [64]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        try packAny(stream.writer(), value);
+        var writer = std.Io.Writer.fixed(&buffer);
+        try packAny(&writer, value);
 
-        stream.reset();
-        const result = try unpackAny(stream.reader(), std.testing.allocator, ?Point);
+        var reader = std.Io.Reader.fixed(writer.buffered());
+        const result = try unpackAny(&reader, std.testing.allocator, ?Point);
         try std.testing.expectEqualDeep(value, result);
     }
 }
@@ -323,11 +323,11 @@ test "packAny/unpackAny: union" {
 
     for (values) |value| {
         var buffer: [64]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        try packAny(stream.writer(), value);
+        var writer = std.Io.Writer.fixed(&buffer);
+        try packAny(&writer, value);
 
-        stream.reset();
-        const result = try unpackAny(stream.reader(), std.testing.allocator, Value);
+        var reader = std.Io.Reader.fixed(writer.buffered());
+        const result = try unpackAny(&reader, std.testing.allocator, Value);
         try std.testing.expectEqualDeep(value, result);
     }
 }
@@ -346,35 +346,35 @@ test "packAny/unpackAny: optional union" {
 
     for (values) |value| {
         var buffer: [64]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        try packAny(stream.writer(), value);
+        var writer = std.Io.Writer.fixed(&buffer);
+        try packAny(&writer, value);
 
-        stream.reset();
-        const result = try unpackAny(stream.reader(), std.testing.allocator, ?Value);
+        var reader = std.Io.Reader.fixed(writer.buffered());
+        const result = try unpackAny(&reader, std.testing.allocator, ?Value);
         try std.testing.expectEqualDeep(value, result);
     }
 }
 
 test "packAny/unpackAny: String struct" {
     var buffer: [64]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var writer = std.Io.Writer.fixed(&buffer);
     const str = String{ .data = "hello" };
-    try packAny(stream.writer(), str);
+    try packAny(&writer, str);
 
-    stream.reset();
-    const result = try unpackAny(stream.reader(), std.testing.allocator, String);
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    const result = try unpackAny(&reader, std.testing.allocator, String);
     defer std.testing.allocator.free(result.data);
     try std.testing.expectEqualStrings("hello", result.data);
 }
 
 test "packAny/unpackAny: Binary struct" {
     var buffer: [64]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var writer = std.Io.Writer.fixed(&buffer);
     const str = String{ .data = "\x01\x02\x03\x04" };
-    try packAny(stream.writer(), str);
+    try packAny(&writer, str);
 
-    stream.reset();
-    const result = try unpackAny(stream.reader(), std.testing.allocator, String);
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    const result = try unpackAny(&reader, std.testing.allocator, String);
     defer std.testing.allocator.free(result.data);
     try std.testing.expectEqualStrings("\x01\x02\x03\x04", result.data);
 }

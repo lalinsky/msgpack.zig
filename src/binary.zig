@@ -29,7 +29,7 @@ pub fn sizeOfPackedBinary(len: usize) !usize {
     return try sizeOfPackedBinaryHeader(len) + len;
 }
 
-pub fn packBinaryHeader(writer: anytype, len: usize) !void {
+pub fn packBinaryHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= hdrs.FIXSTR_MAX - hdrs.FIXSTR_MIN) {
         try writer.writeByte(hdrs.FIXSTR_MIN + @as(u8, @intCast(len)));
     } else if (len <= std.math.maxInt(u8)) {
@@ -46,9 +46,9 @@ pub fn packBinaryHeader(writer: anytype, len: usize) !void {
     }
 }
 
-pub fn unpackBinaryHeader(reader: anytype, comptime MaybeOptionalType: type) !MaybeOptionalType {
+pub fn unpackBinaryHeader(reader: *std.Io.Reader, comptime MaybeOptionalType: type) !MaybeOptionalType {
     const Type = NonOptional(MaybeOptionalType);
-    const header = try reader.readByte();
+    const header = try reader.takeByte();
     switch (header) {
         hdrs.FIXSTR_MIN...hdrs.FIXSTR_MAX => return try unpackShortIntValue(header, hdrs.FIXSTR_MIN, hdrs.FIXSTR_MAX, Type),
         hdrs.STR8 => return try unpackIntValue(reader, u8, Type),
@@ -58,23 +58,23 @@ pub fn unpackBinaryHeader(reader: anytype, comptime MaybeOptionalType: type) !Ma
     }
 }
 
-pub fn packBinary(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
+pub fn packBinary(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T) !void {
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
     try packBinaryHeader(writer, value.len);
     try writer.writeAll(value);
 }
 
-pub fn unpackBinary(reader: anytype, allocator: std.mem.Allocator) ![]u8 {
+pub fn unpackBinary(reader: *std.Io.Reader, allocator: std.mem.Allocator) ![]u8 {
     const len = try unpackBinaryHeader(reader, u32);
 
     const data = try allocator.alloc(u8, len);
     errdefer allocator.free(data);
 
-    try reader.readNoEof(data);
+    try reader.readSliceAll(data);
     return data;
 }
 
-pub fn unpackBinaryInto(reader: anytype, buf: []u8) ![]u8 {
+pub fn unpackBinaryInto(reader: *std.Io.Reader, buf: []u8) ![]u8 {
     const len = try unpackBinaryHeader(reader, u32);
 
     if (len > buf.len) {
@@ -82,7 +82,7 @@ pub fn unpackBinaryInto(reader: anytype, buf: []u8) ![]u8 {
     }
 
     const data = buf[0..len];
-    try reader.readNoEof(data);
+    try reader.readSliceAll(data);
     return data;
 }
 
@@ -104,23 +104,23 @@ const packed_abc = [_]u8{ 0xa3, 0x61, 0x62, 0x63 };
 
 test "packBinary: abc" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packBinary(stream.writer(), []const u8, "abc");
-    try std.testing.expectEqualSlices(u8, &packed_abc, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packBinary(&writer, []const u8, "abc");
+    try std.testing.expectEqualSlices(u8, &packed_abc, writer.buffered());
 }
 
 test "unpackBinary: abc" {
-    var stream = std.io.fixedBufferStream(&packed_abc);
-    const data = try unpackBinary(stream.reader(), std.testing.allocator);
+    var reader = std.Io.Reader.fixed(&packed_abc);
+    const data = try unpackBinary(&reader, std.testing.allocator);
     defer std.testing.allocator.free(data);
     try std.testing.expectEqualSlices(u8, "abc", data);
 }
 
 test "packBinary: null" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packBinary(stream.writer(), ?[]const u8, null);
-    try std.testing.expectEqualSlices(u8, &packed_null, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packBinary(&writer, ?[]const u8, null);
+    try std.testing.expectEqualSlices(u8, &packed_null, writer.buffered());
 }
 
 test "sizeOfPackedBinary" {

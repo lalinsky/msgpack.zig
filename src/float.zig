@@ -26,7 +26,7 @@ pub fn getFloatSize(comptime T: type, value: T) usize {
     return getMaxFloatSize(Type);
 }
 
-pub fn packFloat(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
+pub fn packFloat(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T) !void {
     const Type = assertFloatType(T);
     const value: Type = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
@@ -52,13 +52,10 @@ pub fn packFloat(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
     try writer.writeAll(buf[0..]);
 }
 
-pub fn readFloatValue(reader: anytype, comptime SourceFloat: type, comptime TargetFloat: type) !TargetFloat {
+pub fn readFloatValue(reader: *std.Io.Reader, comptime SourceFloat: type, comptime TargetFloat: type) !TargetFloat {
     const size = @sizeOf(SourceFloat);
     var buf: [size]u8 = undefined;
-    const actual_size = try reader.readAll(&buf);
-    if (actual_size != size) {
-        return error.InvalidFormat;
-    }
+    try reader.readSliceAll(&buf);
 
     const IntType = std.meta.Int(.unsigned, @bitSizeOf(SourceFloat));
     const int_value = std.mem.readInt(IntType, &buf, .big);
@@ -66,9 +63,9 @@ pub fn readFloatValue(reader: anytype, comptime SourceFloat: type, comptime Targ
     return @floatCast(@as(SourceFloat, @bitCast(int_value)));
 }
 
-pub fn unpackFloat(reader: anytype, comptime T: type) !T {
+pub fn unpackFloat(reader: *std.Io.Reader, comptime T: type) !T {
     const Type = assertFloatType(T);
-    const header = try reader.readByte();
+    const header = try reader.takeByte();
     switch (header) {
         hdrs.FLOAT32 => return try readFloatValue(reader, f32, Type),
         hdrs.FLOAT64 => return try readFloatValue(reader, f64, Type),
@@ -96,137 +93,137 @@ fn MinFloatType(comptime T1: type, comptime T2: type) type {
 
 test "readFloat: null" {
     inline for (float_types) |T| {
-        var stream = std.io.fixedBufferStream(&packed_null);
-        try std.testing.expectEqual(null, try unpackFloat(stream.reader(), ?T));
+        var reader = std.Io.Reader.fixed(&packed_null);
+        try std.testing.expectEqual(null, try unpackFloat(&reader, ?T));
     }
 }
 
 test "readFloat: float32 (zero)" {
     inline for (float_types) |T| {
-        var stream = std.io.fixedBufferStream(&packed_float32_zero);
-        const value = try unpackFloat(stream.reader(), T);
+        var reader = std.Io.Reader.fixed(&packed_float32_zero);
+        const value = try unpackFloat(&reader, T);
         try std.testing.expectApproxEqAbs(0.0, value, std.math.floatEpsAt(MinFloatType(T, f32), @floatCast(value)));
     }
 }
 
 test "readFloat: float64 (zero)" {
     inline for (float_types) |T| {
-        var stream = std.io.fixedBufferStream(&packed_float64_zero);
-        const value = try unpackFloat(stream.reader(), T);
+        var reader = std.Io.Reader.fixed(&packed_float64_zero);
+        const value = try unpackFloat(&reader, T);
         try std.testing.expectApproxEqAbs(0.0, value, std.math.floatEpsAt(MinFloatType(T, f64), @floatCast(value)));
     }
 }
 
 test "readFloat: float32 (pi)" {
     inline for (float_types) |T| {
-        var stream = std.io.fixedBufferStream(&packed_float32_pi);
-        const value = try unpackFloat(stream.reader(), T);
+        var reader = std.Io.Reader.fixed(&packed_float32_pi);
+        const value = try unpackFloat(&reader, T);
         try std.testing.expectApproxEqAbs(std.math.pi, value, std.math.floatEpsAt(MinFloatType(T, f32), @floatCast(value)));
     }
 }
 
 test "readFloat: float64 (pi)" {
     inline for (float_types) |T| {
-        var stream = std.io.fixedBufferStream(&packed_float64_pi);
-        const value = try unpackFloat(stream.reader(), T);
+        var reader = std.Io.Reader.fixed(&packed_float64_pi);
+        const value = try unpackFloat(&reader, T);
         try std.testing.expectApproxEqAbs(std.math.pi, value, std.math.floatEpsAt(MinFloatType(T, f64), @floatCast(value)));
     }
 }
 
 test "readFloat: float32 (nan)" {
     inline for (float_types) |T| {
-        var stream = std.io.fixedBufferStream(&packed_float32_nan);
-        const value = try unpackFloat(stream.reader(), T);
+        var reader = std.Io.Reader.fixed(&packed_float32_nan);
+        const value = try unpackFloat(&reader, T);
         try std.testing.expect(std.math.isNan(value));
     }
 }
 
 test "readFloat: float64 (nan)" {
     inline for (float_types) |T| {
-        var stream = std.io.fixedBufferStream(&packed_float64_nan);
-        const value = try unpackFloat(stream.reader(), T);
+        var reader = std.Io.Reader.fixed(&packed_float64_nan);
+        const value = try unpackFloat(&reader, T);
         try std.testing.expect(std.math.isNan(value));
     }
 }
 
 test "readFloat: float32 (inf)" {
     inline for (float_types) |T| {
-        var stream = std.io.fixedBufferStream(&packed_float32_inf);
-        const value = try unpackFloat(stream.reader(), T);
+        var reader = std.Io.Reader.fixed(&packed_float32_inf);
+        const value = try unpackFloat(&reader, T);
         try std.testing.expect(std.math.isInf(value));
     }
 }
 
 test "readFloat: float64 (inf)" {
     inline for (float_types) |T| {
-        var stream = std.io.fixedBufferStream(&packed_float64_inf);
-        const value = try unpackFloat(stream.reader(), T);
+        var reader = std.Io.Reader.fixed(&packed_float64_inf);
+        const value = try unpackFloat(&reader, T);
         try std.testing.expect(std.math.isInf(value));
     }
 }
 
 test "writeFloat: float32 (pi)" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packFloat(stream.writer(), f32, std.math.pi);
-    try std.testing.expectEqualSlices(u8, &packed_float32_pi, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packFloat(&writer, f32, std.math.pi);
+    try std.testing.expectEqualSlices(u8, &packed_float32_pi, writer.buffered());
 }
 
 test "writeFloat: float64 (pi)" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packFloat(stream.writer(), f64, std.math.pi);
-    try std.testing.expectEqualSlices(u8, &packed_float64_pi, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packFloat(&writer, f64, std.math.pi);
+    try std.testing.expectEqualSlices(u8, &packed_float64_pi, writer.buffered());
 }
 
 test "writeFloat: float32 (zero)" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packFloat(stream.writer(), f32, 0.0);
-    try std.testing.expectEqualSlices(u8, &packed_float32_zero, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packFloat(&writer, f32, 0.0);
+    try std.testing.expectEqualSlices(u8, &packed_float32_zero, writer.buffered());
 }
 
 test "writeFloat: float64 (zero)" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packFloat(stream.writer(), f64, 0.0);
-    try std.testing.expectEqualSlices(u8, &packed_float64_zero, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packFloat(&writer, f64, 0.0);
+    try std.testing.expectEqualSlices(u8, &packed_float64_zero, writer.buffered());
 }
 
 test "writeFloat: float32 (nan)" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packFloat(stream.writer(), f32, std.math.nan(f32));
-    try std.testing.expectEqualSlices(u8, &packed_float32_nan, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packFloat(&writer, f32, std.math.nan(f32));
+    try std.testing.expectEqualSlices(u8, &packed_float32_nan, writer.buffered());
 }
 
 test "writeFloat: float64 (nan)" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packFloat(stream.writer(), f64, std.math.nan(f64));
-    try std.testing.expectEqualSlices(u8, &packed_float64_nan, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packFloat(&writer, f64, std.math.nan(f64));
+    try std.testing.expectEqualSlices(u8, &packed_float64_nan, writer.buffered());
 }
 
 test "writeFloat: float32 (inf)" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packFloat(stream.writer(), f32, std.math.inf(f32));
-    try std.testing.expectEqualSlices(u8, &packed_float32_inf, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packFloat(&writer, f32, std.math.inf(f32));
+    try std.testing.expectEqualSlices(u8, &packed_float32_inf, writer.buffered());
 }
 
 test "writeFloat: float64 (inf)" {
     var buffer: [16]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    try packFloat(stream.writer(), f64, std.math.inf(f64));
-    try std.testing.expectEqualSlices(u8, &packed_float64_inf, stream.getWritten());
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packFloat(&writer, f64, std.math.inf(f64));
+    try std.testing.expectEqualSlices(u8, &packed_float64_inf, writer.buffered());
 }
 
 test "writeFloat: null" {
     inline for (float_types) |T| {
         var buffer: [16]u8 = undefined;
-        var stream = std.io.fixedBufferStream(&buffer);
-        try packFloat(stream.writer(), ?T, null);
-        try std.testing.expectEqualSlices(u8, &packed_null, stream.getWritten());
+        var writer = std.Io.Writer.fixed(&buffer);
+        try packFloat(&writer, ?T, null);
+        try std.testing.expectEqualSlices(u8, &packed_null, writer.buffered());
     }
 }
 

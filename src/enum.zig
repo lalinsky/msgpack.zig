@@ -36,7 +36,7 @@ pub fn getEnumSize(comptime T: type, value: T) usize {
     return getIntSize(tag_type, int_value);
 }
 
-pub fn packEnum(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
+pub fn packEnum(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T) !void {
     const Type = assertEnumType(T);
     const value: Type = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
@@ -46,7 +46,7 @@ pub fn packEnum(writer: anytype, comptime T: type, value_or_maybe_null: T) !void
     try packInt(writer, tag_type, int_value);
 }
 
-pub fn unpackEnum(reader: anytype, comptime T: type) !T {
+pub fn unpackEnum(reader: *std.Io.Reader, comptime T: type) !T {
     const Type = assertEnumType(T);
     const tag_type = @typeInfo(Type).@"enum".tag_type;
 
@@ -92,37 +92,37 @@ test "pack/unpack enum" {
 
     // Test plain enum
     {
-        var buffer = std.ArrayList(u8){};
-        defer buffer.deinit(std.testing.allocator);
+        var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer aw.deinit();
 
-        try packEnum(buffer.writer(std.testing.allocator), PlainEnum, .bar);
+        try packEnum(&aw.writer, PlainEnum, .bar);
 
-        var stream = std.io.fixedBufferStream(buffer.items);
-        const result = try unpackEnum(stream.reader(), PlainEnum);
+        var reader = std.Io.Reader.fixed(aw.written());
+        const result = try unpackEnum(&reader, PlainEnum);
         try std.testing.expectEqual(PlainEnum.bar, result);
     }
 
     // Test enum(u8)
     {
-        var buffer = std.ArrayList(u8){};
-        defer buffer.deinit(std.testing.allocator);
+        var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer aw.deinit();
 
-        try packEnum(buffer.writer(std.testing.allocator), U8Enum, .bar);
+        try packEnum(&aw.writer, U8Enum, .bar);
 
-        var stream = std.io.fixedBufferStream(buffer.items);
-        const result = try unpackEnum(stream.reader(), U8Enum);
+        var reader = std.Io.Reader.fixed(aw.written());
+        const result = try unpackEnum(&reader, U8Enum);
         try std.testing.expectEqual(U8Enum.bar, result);
     }
 
     // Test enum(u16)
     {
-        var buffer = std.ArrayList(u8){};
-        defer buffer.deinit(std.testing.allocator);
+        var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer aw.deinit();
 
-        try packEnum(buffer.writer(std.testing.allocator), U16Enum, .alpha);
+        try packEnum(&aw.writer, U16Enum, .alpha);
 
-        var stream = std.io.fixedBufferStream(buffer.items);
-        const result = try unpackEnum(stream.reader(), U16Enum);
+        var reader = std.Io.Reader.fixed(aw.written());
+        const result = try unpackEnum(&reader, U16Enum);
         try std.testing.expectEqual(U16Enum.alpha, result);
     }
 }
@@ -136,13 +136,13 @@ test "enum edge cases" {
         fourth, // auto-assigned to 21
     };
 
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(std.testing.allocator);
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
 
-    try packEnum(buffer.writer(std.testing.allocator), MixedEnum, .second);
+    try packEnum(&aw.writer, MixedEnum, .second);
 
-    var stream = std.io.fixedBufferStream(buffer.items);
-    const result = try unpackEnum(stream.reader(), MixedEnum);
+    var reader = std.Io.Reader.fixed(aw.written());
+    const result = try unpackEnum(&reader, MixedEnum);
     try std.testing.expectEqual(MixedEnum.second, result);
     try std.testing.expectEqual(11, @intFromEnum(result));
 }
@@ -153,27 +153,27 @@ test "optional enum" {
 
     // Test non-null optional enum
     {
-        var buffer = std.ArrayList(u8){};
-        defer buffer.deinit(std.testing.allocator);
+        var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer aw.deinit();
 
         const value: OptionalEnum = .bar;
-        try packEnum(buffer.writer(std.testing.allocator), OptionalEnum, value);
+        try packEnum(&aw.writer, OptionalEnum, value);
 
-        var stream = std.io.fixedBufferStream(buffer.items);
-        const result = try unpackEnum(stream.reader(), OptionalEnum);
+        var reader = std.Io.Reader.fixed(aw.written());
+        const result = try unpackEnum(&reader, OptionalEnum);
         try std.testing.expectEqual(@as(OptionalEnum, .bar), result);
     }
 
     // Test null optional enum
     {
-        var buffer = std.ArrayList(u8){};
-        defer buffer.deinit(std.testing.allocator);
+        var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer aw.deinit();
 
         const value: OptionalEnum = null;
-        try packEnum(buffer.writer(std.testing.allocator), OptionalEnum, value);
+        try packEnum(&aw.writer, OptionalEnum, value);
 
-        var stream = std.io.fixedBufferStream(buffer.items);
-        const result = try unpackEnum(stream.reader(), OptionalEnum);
+        var reader = std.Io.Reader.fixed(aw.written());
+        const result = try unpackEnum(&reader, OptionalEnum);
         try std.testing.expectEqual(@as(OptionalEnum, null), result);
     }
 }
