@@ -13,7 +13,7 @@ There are multiple options on how to encode struct fields, in order to generate 
 1) Add msgpack.zig as a dependency in your `build.zig.zon`:
 
 ```bash
-zig fetch --save "git+https://github.com/lalinsky/msgpack.zig?ref=v0.5.0"
+zig fetch --save "git+https://github.com/lalinsky/msgpack.zig?ref=v0.6.0"
 ```
 
 2) In your `build.zig`, add the `msgpack` module as a dependency you your program:
