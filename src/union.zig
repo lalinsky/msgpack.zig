@@ -98,11 +98,11 @@ pub fn packUnionAsTagged(writer: anytype, comptime T: type, value: T, opts: Unio
         if (value == @field(TagType, field.name)) {
             const field_value = @field(value, field.name);
             const field_type_info = @typeInfo(field.type);
-            
+
             const field_count = if (field_type_info == .@"struct") field_type_info.@"struct".fields.len else 0;
-            
+
             try packMapHeader(writer, field_count + 1);
-            
+
             try packString(writer, opts.tag_field);
             switch (opts.tag_value) {
                 .field_index => {
@@ -115,7 +115,7 @@ pub fn packUnionAsTagged(writer: anytype, comptime T: type, value: T, opts: Unio
                     try packString(writer, strPrefix(field.name, prefix));
                 },
             }
-            
+
             if (field_type_info == .@"struct") {
                 inline for (field_type_info.@"struct".fields) |struct_field| {
                     try packString(writer, struct_field.name);
@@ -124,7 +124,7 @@ pub fn packUnionAsTagged(writer: anytype, comptime T: type, value: T, opts: Unio
             } else if (field.type != void) {
                 return error.TaggedUnionUnsupportedFieldType;
             }
-            
+
             return;
         }
     }
@@ -259,7 +259,7 @@ pub fn unpackUnionAsTagged(reader: anytype, allocator: std.mem.Allocator, compti
 
         if (is_match) {
             const field_type_info = @typeInfo(field.type);
-            
+
             if (field.type == void) {
                 if (len != 1) {
                     return error.InvalidTaggedUnionFieldCount;
@@ -366,7 +366,7 @@ const Msg4 = union(enum) {
         return .{ .as_tagged = .{
             .tag_field = "op",
             .tag_value = .field_index,
-        }};
+        } };
     }
 };
 
@@ -374,29 +374,29 @@ const msg3_get = Msg3{ .get = .{ .key = 42 } };
 const msg3_get_packed = [_]u8{
     0x82, // map with 2 elements
     0xa4, 't', 'y', 'p', 'e', // key: "type"
-    0xa3, 'g', 'e', 't',       // value: "get"
-    0xa3, 'k', 'e', 'y',       // key: "key"
-    42,                        // value: 42
+    0xa3, 'g', 'e', 't', // value: "get"
+    0xa3, 'k', 'e', 'y', // key: "key"
+    42, // value: 42
 };
 
 const msg3_put = Msg3{ .put = .{ .key = 10, .val = 20 } };
 const msg3_put_packed = [_]u8{
     0x83, // map with 3 elements
     0xa4, 't', 'y', 'p', 'e', // key: "type"
-    0xa3, 'p', 'u', 't',       // value: "put"
-    0xa3, 'k', 'e', 'y',       // key: "key"  
-    10,                        // value: 10
-    0xa3, 'v', 'a', 'l',       // key: "val"
-    20,                        // value: 20
+    0xa3, 'p', 'u', 't', // value: "put"
+    0xa3, 'k', 'e', 'y', // key: "key"
+    10, // value: 10
+    0xa3, 'v', 'a', 'l', // key: "val"
+    20, // value: 20
 };
 
 const msg4_get = Msg4{ .get = .{ .key = 99 } };
 const msg4_get_packed = [_]u8{
     0x82, // map with 2 elements
-    0xa2, 'o', 'p',            // key: "op"
-    0x00,                      // value: 0 (field index)
-    0xa3, 'k', 'e', 'y',       // key: "key"
-    99,                        // value: 99
+    0xa2, 'o', 'p', // key: "op"
+    0x00, // value: 0 (field index)
+    0xa3, 'k', 'e', 'y', // key: "key"
+    99, // value: 99
 };
 
 test "writeUnion: tagged format with field name" {

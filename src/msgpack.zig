@@ -321,56 +321,56 @@ test "encode/decode" {
 test "encode/decode enum" {
     const Status = enum(u8) { pending = 1, active = 2, inactive = 3 };
     const PlainEnum = enum { foo, bar, baz };
-    
+
     // Test enum(u8)
     {
         var buffer = std.ArrayList(u8){};
         defer buffer.deinit(std.testing.allocator);
-        
+
         try encode(Status.active, buffer.writer(std.testing.allocator));
-        
+
         const decoded = try decodeFromSlice(Status, std.testing.allocator, buffer.items);
         defer decoded.deinit();
-        
+
         try std.testing.expectEqual(Status.active, decoded.value);
     }
-    
-    // Test plain enum  
+
+    // Test plain enum
     {
         var buffer = std.ArrayList(u8){};
         defer buffer.deinit(std.testing.allocator);
-        
+
         try encode(PlainEnum.bar, buffer.writer(std.testing.allocator));
-        
+
         const decoded = try decodeFromSlice(PlainEnum, std.testing.allocator, buffer.items);
         defer decoded.deinit();
-        
+
         try std.testing.expectEqual(PlainEnum.bar, decoded.value);
     }
-    
+
     // Test optional enum with null
     {
         var buffer = std.ArrayList(u8){};
         defer buffer.deinit(std.testing.allocator);
-        
+
         try encode(@as(?Status, null), buffer.writer(std.testing.allocator));
-        
+
         const decoded = try decodeFromSlice(?Status, std.testing.allocator, buffer.items);
         defer decoded.deinit();
-        
+
         try std.testing.expectEqual(@as(?Status, null), decoded.value);
     }
-    
+
     // Test optional enum with value
     {
         var buffer = std.ArrayList(u8){};
         defer buffer.deinit(std.testing.allocator);
-        
+
         try encode(@as(?Status, .pending), buffer.writer(std.testing.allocator));
-        
+
         const decoded = try decodeFromSlice(?Status, std.testing.allocator, buffer.items);
         defer decoded.deinit();
-        
+
         try std.testing.expectEqual(@as(?Status, .pending), decoded.value);
     }
 }

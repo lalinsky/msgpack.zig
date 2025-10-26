@@ -600,7 +600,7 @@ test "writeStruct: optional struct field with null default" {
     const InnerStruct = struct {
         x: u32,
     };
-    
+
     const OuterStruct = struct {
         a: u32,
         inner: ?InnerStruct = null,
@@ -609,7 +609,7 @@ test "writeStruct: optional struct field with null default" {
             return .{ .as_map = .{ .key = .field_name, .omit_defaults = true } };
         }
     };
-    
+
     const msg = OuterStruct{ .a = 42 };
 
     var buffer: [100]u8 = undefined;
