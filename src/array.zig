@@ -16,8 +16,6 @@ const unpackAny = @import("any.zig").unpackAny;
 pub fn sizeOfPackedArrayHeader(len: usize) !usize {
     if (len <= hdrs.FIXARRAY_MAX - hdrs.FIXARRAY_MIN) {
         return 1;
-    } else if (len <= std.math.maxInt(u8)) {
-        return 1 + @sizeOf(u8);
     } else if (len <= std.math.maxInt(u16)) {
         return 1 + @sizeOf(u16);
     } else if (len <= std.math.maxInt(u32)) {
@@ -140,4 +138,8 @@ test "packArray: null" {
 
 test "sizeOfPackedArray" {
     try std.testing.expectEqual(1, sizeOfPackedArray(0));
+}
+
+test "sizeOfPackedArrayHeader: array16 boundary" {
+    try std.testing.expectEqual(3, sizeOfPackedArrayHeader(16));
 }

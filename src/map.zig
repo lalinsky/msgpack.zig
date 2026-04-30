@@ -17,8 +17,6 @@ const unpackAny = @import("any.zig").unpackAny;
 pub fn sizeOfPackedMapHeader(len: usize) !usize {
     if (len <= hdrs.FIXMAP_MAX - hdrs.FIXMAP_MIN) {
         return 1;
-    } else if (len <= std.math.maxInt(u8)) {
-        return 1 + @sizeOf(u8);
     } else if (len <= std.math.maxInt(u16)) {
         return 1 + @sizeOf(u16);
     } else if (len <= std.math.maxInt(u32)) {
@@ -155,4 +153,8 @@ test "unpackMap unmanaged" {
 
 test "sizeOfPackedMap" {
     try std.testing.expectEqual(1, sizeOfPackedMap(0));
+}
+
+test "sizeOfPackedMapHeader: map16 boundary" {
+    try std.testing.expectEqual(3, sizeOfPackedMapHeader(16));
 }
