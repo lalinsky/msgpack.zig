@@ -3,6 +3,7 @@ const hdrs = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
 
+const getNullSize = @import("null.zig").getNullSize;
 const packNull = @import("null.zig").packNull;
 const unpackNull = @import("null.zig").unpackNull;
 
@@ -55,18 +56,25 @@ inline fn isString(comptime T: type) bool {
     return false;
 }
 
-pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
+pub fn sizeOfPackedAny(comptime T: type, value: T) !usize {
+    if (@typeInfo(T) == .optional) {
+        if (value) |v| {
+            return sizeOfPackedAny(@TypeOf(v), v);
+        }
+        return getNullSize();
+    }
+
     switch (@typeInfo(NonOptional(T))) {
         .bool => return getBoolSize(),
         .int => return getIntSize(T, value),
         .float => return getFloatSize(T, value),
         .@"enum" => return getEnumSize(T, value),
         .pointer => |ptr_info| {
-            if (ptr_info.size == .Slice) {
+            if (ptr_info.size == .slice) {
                 if (isString(T)) {
-                    return sizeOfPackedString(value.len);
+                    return try sizeOfPackedString(value.len);
                 } else {
-                    return sizeOfPackedArray(value.len);
+                    return try sizeOfPackedArray(value.len);
                 }
             }
         },
@@ -375,4 +383,18 @@ test "packAny/unpackAny: Binary struct" {
     const result = try unpackAny(&reader, std.testing.allocator, Binary);
     defer std.testing.allocator.free(result.data);
     try std.testing.expectEqualSlices(u8, "\x01\x02\x03\x04", result.data);
+}
+
+test "sizeOfPackedAny: string slice" {
+    try std.testing.expectEqual(4, try sizeOfPackedAny([]const u8, "abc"));
+}
+
+test "sizeOfPackedAny: array slice" {
+    const values = [_]u16{ 1, 2, 3 };
+    try std.testing.expectEqual(4, try sizeOfPackedAny([]const u16, &values));
+}
+
+test "sizeOfPackedAny: optional null and value" {
+    try std.testing.expectEqual(1, try sizeOfPackedAny(?[]const u8, null));
+    try std.testing.expectEqual(4, try sizeOfPackedAny(?[]const u8, "abc"));
 }
