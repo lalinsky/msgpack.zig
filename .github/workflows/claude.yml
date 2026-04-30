@@ -30,6 +30,10 @@ jobs:
         with:
           fetch-depth: 1
 
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@beta
