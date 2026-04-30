@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - 2026-04-30
+
+### Added
+- Support for Zig 0.16
+
+### Fixed
+- Binary data is now encoded with the correct `bin8`/`bin16`/`bin32` msgpack headers instead of string headers; string headers are still accepted when decoding for backwards compatibility
+- Array and map header size calculation incorrectly included a non-existent `u8` size tier; arrays/maps with 16–65535 elements now correctly use the `array16`/`map16` 3-byte header
+- `sizeOfPackedAny` now correctly handles optional values and propagates errors from string/array size calculations
+- Custom formats (`msgpackFormat`, `msgpackFieldKey`, `msgpackRead`, `msgpackWrite`) now work correctly when the type is wrapped in an optional
 
 ## [0.6.0] - 2025-10-26
 
@@ -39,7 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release
 
-[Unreleased]: https://github.com/lalinsky/msgpack.zig/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/lalinsky/msgpack.zig/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/lalinsky/msgpack.zig/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/lalinsky/msgpack.zig/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/lalinsky/msgpack.zig/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/lalinsky/msgpack.zig/compare/v0.2.0...v0.4.0
