@@ -244,7 +244,7 @@ pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator,
             const field_name = try unpackStringInto(reader, &tag_value_buffer);
             union_field_name = field_name;
         },
-        .field_name_prefix => |_| {
+        .field_name_prefix => {
             const field_name = try unpackStringInto(reader, &tag_value_buffer);
             union_field_name = field_name;
         },
