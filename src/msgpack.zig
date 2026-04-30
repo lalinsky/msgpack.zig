@@ -197,7 +197,7 @@ pub const Unpacker = struct {
     }
 
     pub fn readBinary(self: Unpacker) ![]const u8 {
-        return unpackString(self.reader, self.allocator);
+        return unpackBinary(self.reader, self.allocator);
     }
 
     pub fn readBinaryInto(self: Unpacker, buffer: []u8) ![]const u8 {
@@ -363,4 +363,12 @@ test "encode/decode enum" {
 
         try std.testing.expectEqual(@as(?Status, .pending), decoded.value);
     }
+}
+
+test "unpacker readBinary reads bin8" {
+    const packed_bin_abc = [_]u8{ 0xc4, 0x03, 0x61, 0x62, 0x63 };
+    var reader = std.Io.Reader.fixed(&packed_bin_abc);
+    const value = try unpacker(&reader, std.testing.allocator).readBinary();
+    defer std.testing.allocator.free(value);
+    try std.testing.expectEqualSlices(u8, "abc", value);
 }

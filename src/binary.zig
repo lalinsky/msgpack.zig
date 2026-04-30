@@ -12,9 +12,7 @@ const unpackIntValue = @import("int.zig").unpackIntValue;
 const unpackShortIntValue = @import("int.zig").unpackShortIntValue;
 
 pub fn sizeOfPackedBinaryHeader(len: usize) !usize {
-    if (len <= hdrs.FIXSTR_MAX - hdrs.FIXSTR_MIN) {
-        return 1;
-    } else if (len <= std.math.maxInt(u8)) {
+    if (len <= std.math.maxInt(u8)) {
         return 1 + @sizeOf(u8);
     } else if (len <= std.math.maxInt(u16)) {
         return 1 + @sizeOf(u16);
@@ -30,16 +28,14 @@ pub fn sizeOfPackedBinary(len: usize) !usize {
 }
 
 pub fn packBinaryHeader(writer: *std.Io.Writer, len: usize) !void {
-    if (len <= hdrs.FIXSTR_MAX - hdrs.FIXSTR_MIN) {
-        try writer.writeByte(hdrs.FIXSTR_MIN + @as(u8, @intCast(len)));
-    } else if (len <= std.math.maxInt(u8)) {
-        try writer.writeByte(hdrs.STR8);
+    if (len <= std.math.maxInt(u8)) {
+        try writer.writeByte(hdrs.BIN8);
         try packIntValue(writer, u8, @intCast(len));
     } else if (len <= std.math.maxInt(u16)) {
-        try writer.writeByte(hdrs.STR16);
+        try writer.writeByte(hdrs.BIN16);
         try packIntValue(writer, u16, @intCast(len));
     } else if (len <= std.math.maxInt(u32)) {
-        try writer.writeByte(hdrs.STR32);
+        try writer.writeByte(hdrs.BIN32);
         try packIntValue(writer, u32, @intCast(len));
     } else {
         return error.BinaryTooLong;
@@ -50,6 +46,9 @@ pub fn unpackBinaryHeader(reader: *std.Io.Reader, comptime MaybeOptionalType: ty
     const Type = NonOptional(MaybeOptionalType);
     const header = try reader.takeByte();
     switch (header) {
+        hdrs.BIN8 => return try unpackIntValue(reader, u8, Type),
+        hdrs.BIN16 => return try unpackIntValue(reader, u16, Type),
+        hdrs.BIN32 => return try unpackIntValue(reader, u32, Type),
         hdrs.FIXSTR_MIN...hdrs.FIXSTR_MAX => return try unpackShortIntValue(header, hdrs.FIXSTR_MIN, hdrs.FIXSTR_MAX, Type),
         hdrs.STR8 => return try unpackIntValue(reader, u8, Type),
         hdrs.STR16 => return try unpackIntValue(reader, u16, Type),
@@ -89,7 +88,7 @@ pub fn unpackBinaryInto(reader: *std.Io.Reader, buf: []u8) ![]u8 {
 pub const Binary = struct {
     data: []const u8,
 
-    pub fn msgpackWrite(self: *Binary, packer: anytype) !void {
+    pub fn msgpackWrite(self: Binary, packer: anytype) !void {
         try packer.writeBinary(self.data);
     }
 
@@ -101,16 +100,24 @@ pub const Binary = struct {
 
 const packed_null = [_]u8{0xc0};
 const packed_abc = [_]u8{ 0xa3, 0x61, 0x62, 0x63 };
+const packed_bin_abc = [_]u8{ 0xc4, 0x03, 0x61, 0x62, 0x63 };
 
 test "packBinary: abc" {
     var buffer: [16]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     try packBinary(&writer, []const u8, "abc");
-    try std.testing.expectEqualSlices(u8, &packed_abc, writer.buffered());
+    try std.testing.expectEqualSlices(u8, &packed_bin_abc, writer.buffered());
 }
 
-test "unpackBinary: abc" {
+test "unpackBinary: abc from string header" {
     var reader = std.Io.Reader.fixed(&packed_abc);
+    const data = try unpackBinary(&reader, std.testing.allocator);
+    defer std.testing.allocator.free(data);
+    try std.testing.expectEqualSlices(u8, "abc", data);
+}
+
+test "unpackBinary: abc bin8" {
+    var reader = std.Io.Reader.fixed(&packed_bin_abc);
     const data = try unpackBinary(&reader, std.testing.allocator);
     defer std.testing.allocator.free(data);
     try std.testing.expectEqualSlices(u8, "abc", data);
@@ -124,5 +131,5 @@ test "packBinary: null" {
 }
 
 test "sizeOfPackedBinary" {
-    try std.testing.expectEqual(1, sizeOfPackedBinary(0));
+    try std.testing.expectEqual(2, sizeOfPackedBinary(0));
 }
