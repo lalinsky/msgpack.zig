@@ -22,6 +22,7 @@ const sizeOfPackedString = @import("string.zig").sizeOfPackedString;
 const packString = @import("string.zig").packString;
 const unpackString = @import("string.zig").unpackString;
 const String = @import("string.zig").String;
+const Binary = @import("binary.zig").Binary;
 
 const sizeOfPackedArray = @import("array.zig").sizeOfPackedArray;
 const packArray = @import("array.zig").packArray;
@@ -367,11 +368,11 @@ test "packAny/unpackAny: String struct" {
 test "packAny/unpackAny: Binary struct" {
     var buffer: [64]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
-    const str = String{ .data = "\x01\x02\x03\x04" };
-    try packAny(&writer, str);
+    const binary = Binary{ .data = "\x01\x02\x03\x04" };
+    try packAny(&writer, binary);
 
     var reader = std.Io.Reader.fixed(writer.buffered());
-    const result = try unpackAny(&reader, std.testing.allocator, String);
+    const result = try unpackAny(&reader, std.testing.allocator, Binary);
     defer std.testing.allocator.free(result.data);
-    try std.testing.expectEqualStrings("\x01\x02\x03\x04", result.data);
+    try std.testing.expectEqualSlices(u8, "\x01\x02\x03\x04", result.data);
 }
