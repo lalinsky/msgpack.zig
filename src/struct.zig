@@ -75,7 +75,7 @@ fn isStructFieldUsed(field: std.builtin.Type.StructField, value: anytype, opts: 
     return true;
 }
 
-fn countUsedStructFields(fields: []const std.builtin.Type.StructField, value: anytype, opts: StructAsMapOptions) u16 {
+fn countUsedStructFields(comptime fields: []const std.builtin.Type.StructField, value: anytype, opts: StructAsMapOptions) u16 {
     var used_field_count: u16 = 0;
     inline for (fields) |field| {
         if (isStructFieldUsed(field, value, opts)) {
