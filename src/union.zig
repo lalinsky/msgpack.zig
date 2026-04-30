@@ -139,7 +139,7 @@ pub fn packUnion(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: 
         @compileError("Expected union type");
     }
 
-    const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_union_format;
+    const format = if (std.meta.hasFn(Type, "msgpackFormat")) Type.msgpackFormat() else default_union_format;
     switch (format) {
         .as_map => |opts| {
             return packUnionAsMap(writer, Type, value, opts);
@@ -281,7 +281,7 @@ pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator,
 pub fn unpackUnion(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
     const Type = NonOptional(T);
 
-    const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_union_format;
+    const format = if (std.meta.hasFn(Type, "msgpackFormat")) Type.msgpackFormat() else default_union_format;
     switch (format) {
         .as_map => |opts| {
             return try unpackUnionAsMap(reader, allocator, T, opts);
@@ -327,6 +327,48 @@ test "writeUnion: int field" {
     try packUnion(&writer, Msg1, msg1);
 
     try std.testing.expectEqualSlices(u8, &msg1_packed, writer.buffered());
+}
+
+test "writeUnion: optional custom format" {
+    const Msg = union(enum) {
+        a: u32,
+        b: u64,
+
+        pub fn msgpackFormat() UnionFormat {
+            return .{ .as_map = .{ .key = .field_index } };
+        }
+    };
+
+    var buffer: [100]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packUnion(&writer, ?Msg, Msg{ .a = 1 });
+
+    try std.testing.expectEqualSlices(u8, &.{
+        0x81,
+        0x00,
+        0x01,
+    }, writer.buffered());
+}
+
+test "readUnion: optional custom format" {
+    const Msg = union(enum) {
+        a: u32,
+        b: u64,
+
+        pub fn msgpackFormat() UnionFormat {
+            return .{ .as_map = .{ .key = .field_index } };
+        }
+    };
+
+    const packed_msg = [_]u8{
+        0x81,
+        0x00,
+        0x2a,
+    };
+    var reader = std.Io.Reader.fixed(&packed_msg);
+    const decoded = try unpackUnion(&reader, std.testing.allocator, ?Msg);
+
+    try std.testing.expectEqualDeep(@as(?Msg, Msg{ .a = 42 }), decoded);
 }
 
 test "writeUnion: void field" {
