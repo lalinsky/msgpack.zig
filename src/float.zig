@@ -3,6 +3,7 @@ const hdrs = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
+const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 inline fn assertFloatType(comptime T: type) type {
@@ -30,26 +31,21 @@ pub fn packFloat(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: 
     const Type = assertFloatType(T);
     const value: Type = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
-    comptime var TargetType: type = undefined;
     const type_info = @typeInfo(Type);
-    switch (type_info.float.bits) {
-        0...32 => {
-            try writer.writeByte(hdrs.FLOAT32);
-            TargetType = f32;
-        },
-        33...64 => {
-            try writer.writeByte(hdrs.FLOAT64);
-            TargetType = f64;
-        },
+    const TargetType = switch (type_info.float.bits) {
+        0...32 => f32,
+        33...64 => f64,
         else => @compileError("Unsupported float size"),
-    }
+    };
+    const header = switch (type_info.float.bits) {
+        0...32 => hdrs.FLOAT32,
+        33...64 => hdrs.FLOAT64,
+        else => unreachable,
+    };
 
     const IntType = std.meta.Int(.unsigned, @bitSizeOf(TargetType));
     const int_value = @as(IntType, @bitCast(@as(TargetType, @floatCast(value))));
-
-    var buf: [@sizeOf(IntType)]u8 = undefined;
-    std.mem.writeInt(IntType, buf[0..], int_value, .big);
-    try writer.writeAll(buf[0..]);
+    return packHeaderAndInt(writer, header, IntType, int_value);
 }
 
 pub fn readFloatValue(reader: *std.Io.Reader, comptime SourceFloat: type, comptime TargetFloat: type) !TargetFloat {

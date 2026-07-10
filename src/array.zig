@@ -7,7 +7,7 @@ const isOptional = @import("utils.zig").isOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
-const packIntValue = @import("int.zig").packIntValue;
+const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
 const unpackIntValue = @import("int.zig").unpackIntValue;
 
 const packAny = @import("any.zig").packAny;
@@ -33,11 +33,9 @@ pub fn packArrayHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= hdrs.FIXARRAY_MAX - hdrs.FIXARRAY_MIN) {
         try writer.writeByte(hdrs.FIXARRAY_MIN + @as(u8, @intCast(len)));
     } else if (len <= std.math.maxInt(u16)) {
-        try writer.writeByte(hdrs.ARRAY16);
-        try packIntValue(writer, u16, @intCast(len));
+        try packHeaderAndInt(writer, hdrs.ARRAY16, u16, @intCast(len));
     } else if (len <= std.math.maxInt(u32)) {
-        try writer.writeByte(hdrs.ARRAY32);
-        try packIntValue(writer, u32, @intCast(len));
+        try packHeaderAndInt(writer, hdrs.ARRAY32, u32, @intCast(len));
     } else {
         return error.ArrayTooLong;
     }

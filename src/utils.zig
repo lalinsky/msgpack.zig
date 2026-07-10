@@ -22,6 +22,35 @@ test isOptional {
     try std.testing.expect(!isOptional(u32));
 }
 
+/// Reserves `len` bytes of the writer's buffer, or returns null if it does not
+/// fit. Keeps `len` comptime-known so stores through the result lower to
+/// immediate stores instead of a `memcpy` call. Callers must fill the result.
+pub inline fn reserveArray(writer: *std.Io.Writer, comptime len: usize) ?*[len]u8 {
+    if (writer.end + len <= writer.buffer.len) {
+        @branchHint(.likely);
+        const dst = writer.buffer[writer.end..][0..len];
+        writer.end += len;
+        return dst;
+    }
+    return null;
+}
+
+/// Writes a header byte followed by a big-endian `T`, as a single contiguous
+/// store when the writer's buffer has room, and as a single `writeAll`
+/// otherwise. Never splits the header from its payload across a drain.
+pub fn packHeaderAndInt(writer: *std.Io.Writer, header: u8, comptime T: type, value: T) !void {
+    const size = @sizeOf(T);
+    if (reserveArray(writer, 1 + size)) |dst| {
+        dst[0] = header;
+        std.mem.writeInt(T, dst[1..][0..size], value, .big);
+        return;
+    }
+    var buf: [1 + size]u8 = undefined;
+    buf[0] = header;
+    std.mem.writeInt(T, buf[1..][0..size], value, .big);
+    try writer.writeAll(&buf);
+}
+
 var no_allocator_dummy: u8 = 0;
 
 pub const NoAllocator = struct {

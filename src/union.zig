@@ -15,7 +15,7 @@ const unpackMapHeader = @import("map.zig").unpackMapHeader;
 const packInt = @import("int.zig").packInt;
 const unpackInt = @import("int.zig").unpackInt;
 
-const packString = @import("string.zig").packString;
+const packStringLiteral = @import("string.zig").packStringLiteral;
 const unpackStringInto = @import("string.zig").unpackStringInto;
 
 const packArrayHeader = @import("array.zig").packArrayHeader;
@@ -62,7 +62,7 @@ fn strPrefix(src: []const u8, len: usize) []const u8 {
     return src[0..@min(src.len, len)];
 }
 
-pub fn packUnionAsMap(writer: *std.Io.Writer, comptime T: type, value: T, opts: UnionAsMapOptions) !void {
+pub fn packUnionAsMap(writer: *std.Io.Writer, comptime T: type, value: T, comptime opts: UnionAsMapOptions) !void {
     const type_info = @typeInfo(T);
     const fields = type_info.@"union".fields;
 
@@ -77,10 +77,10 @@ pub fn packUnionAsMap(writer: *std.Io.Writer, comptime T: type, value: T, opts: 
                     try packInt(writer, u16, i);
                 },
                 .field_name => {
-                    try packString(writer, field.name);
+                    try packStringLiteral(writer, field.name);
                 },
                 .field_name_prefix => |prefix| {
-                    try packString(writer, strPrefix(field.name, prefix));
+                    try packStringLiteral(writer, comptime strPrefix(field.name, prefix));
                 },
             }
             try packAny(writer, @field(value, field.name));
@@ -88,7 +88,7 @@ pub fn packUnionAsMap(writer: *std.Io.Writer, comptime T: type, value: T, opts: 
     }
 }
 
-pub fn packUnionAsTagged(writer: *std.Io.Writer, comptime T: type, value: T, opts: UnionAsTaggedOptions) !void {
+pub fn packUnionAsTagged(writer: *std.Io.Writer, comptime T: type, value: T, comptime opts: UnionAsTaggedOptions) !void {
     const type_info = @typeInfo(T);
     const fields = type_info.@"union".fields;
 
@@ -103,22 +103,22 @@ pub fn packUnionAsTagged(writer: *std.Io.Writer, comptime T: type, value: T, opt
 
             try packMapHeader(writer, field_count + 1);
 
-            try packString(writer, opts.tag_field);
+            try packStringLiteral(writer, opts.tag_field);
             switch (opts.tag_value) {
                 .field_index => {
                     try packInt(writer, u16, i);
                 },
                 .field_name => {
-                    try packString(writer, field.name);
+                    try packStringLiteral(writer, field.name);
                 },
                 .field_name_prefix => |prefix| {
-                    try packString(writer, strPrefix(field.name, prefix));
+                    try packStringLiteral(writer, comptime strPrefix(field.name, prefix));
                 },
             }
 
             if (field_type_info == .@"struct") {
                 inline for (field_type_info.@"struct".fields) |struct_field| {
-                    try packString(writer, struct_field.name);
+                    try packStringLiteral(writer, struct_field.name);
                     try packAny(writer, @field(field_value, struct_field.name));
                 }
             } else if (field.type != void) {
@@ -139,7 +139,7 @@ pub fn packUnion(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: 
         @compileError("Expected union type");
     }
 
-    const format = if (std.meta.hasFn(Type, "msgpackFormat")) Type.msgpackFormat() else default_union_format;
+    const format = comptime if (std.meta.hasFn(Type, "msgpackFormat")) Type.msgpackFormat() else default_union_format;
     switch (format) {
         .as_map => |opts| {
             return packUnionAsMap(writer, Type, value, opts);

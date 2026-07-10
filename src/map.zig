@@ -8,7 +8,7 @@ const isOptional = @import("utils.zig").isOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
-const packIntValue = @import("int.zig").packIntValue;
+const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
 const unpackIntValue = @import("int.zig").unpackIntValue;
 
 const packAny = @import("any.zig").packAny;
@@ -34,11 +34,9 @@ pub fn packMapHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= hdrs.FIXMAP_MAX - hdrs.FIXMAP_MIN) {
         try writer.writeByte(hdrs.FIXMAP_MIN + @as(u8, @intCast(len)));
     } else if (len <= std.math.maxInt(u16)) {
-        try writer.writeByte(hdrs.MAP16);
-        try packIntValue(writer, u16, @intCast(len));
+        try packHeaderAndInt(writer, hdrs.MAP16, u16, @intCast(len));
     } else if (len <= std.math.maxInt(u32)) {
-        try writer.writeByte(hdrs.MAP32);
-        try packIntValue(writer, u32, @intCast(len));
+        try packHeaderAndInt(writer, hdrs.MAP32, u32, @intCast(len));
     } else {
         return error.MapTooLong;
     }
