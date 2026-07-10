@@ -101,6 +101,35 @@ pub fn unpackString(reader: *std.Io.Reader, allocator: std.mem.Allocator) ![]u8 
     return data;
 }
 
+/// Unpacks a string without copying it, borrowing the reader's buffer. The
+/// result is only valid until the next read, so it suits keys that are compared
+/// and discarded, not values that are kept. The reader's buffer must be able to
+/// hold the whole string.
+pub fn unpackStringBorrowed(reader: *std.Io.Reader) ![]const u8 {
+    // A buffered fixstr, which is what a map key almost always is, needs no
+    // header parse and no copy.
+    const buffered = reader.buffer[reader.seek..reader.end];
+    if (buffered.len > 0 and buffered[0] >= hdrs.FIXSTR_MIN and buffered[0] <= hdrs.FIXSTR_MAX) {
+        @branchHint(.likely);
+        const len = buffered[0] - hdrs.FIXSTR_MIN;
+        if (1 + len <= buffered.len) {
+            reader.seek += 1 + len;
+            return buffered[1..][0..len];
+        }
+    }
+
+    const len = try unpackStringHeader(reader, u32);
+
+    // `take` rebases, which asserts the reader's buffer can hold `len`; report
+    // that as an error rather than letting the assert fire.
+    if (len > reader.buffer.len) {
+        @branchHint(.unlikely);
+        return error.ReaderBufferTooSmall;
+    }
+
+    return reader.take(len);
+}
+
 pub fn unpackStringInto(reader: *std.Io.Reader, buf: []u8) ![]u8 {
     const len = try unpackStringHeader(reader, u32);
 

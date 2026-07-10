@@ -43,6 +43,7 @@ pub const packStringLiteral = @import("string.zig").packStringLiteral;
 pub const unpackStringHeader = @import("string.zig").unpackStringHeader;
 pub const unpackString = @import("string.zig").unpackString;
 pub const unpackStringInto = @import("string.zig").unpackStringInto;
+pub const unpackStringBorrowed = @import("string.zig").unpackStringBorrowed;
 
 pub const packBinaryHeader = @import("binary.zig").packBinaryHeader;
 pub const packBinary = @import("binary.zig").packBinary;
@@ -285,6 +286,120 @@ pub fn decodeFromSliceLeaky(comptime T: type, allocator: ?Allocator, data: []con
 
 test {
     _ = std.testing.refAllDecls(@This());
+}
+
+/// A reader that yields one byte per fill, out of a caller-sized buffer. Models
+/// a trickling network stream, where a value can straddle a fill and the
+/// reader's buffer can be smaller than the value being decoded. `Reader.fixed`
+/// cannot express either case, since its buffer is the whole payload.
+const TrickleReader = struct {
+    data: []const u8,
+    pos: usize = 0,
+    reader: std.Io.Reader,
+
+    fn init(buffer: []u8, data: []const u8) TrickleReader {
+        return .{
+            .data = data,
+            .reader = .{
+                .vtable = &.{
+                    .stream = stream,
+                    .discard = discard,
+                    .readVec = readVec,
+                    .rebase = std.Io.Reader.defaultRebase,
+                },
+                .buffer = buffer,
+                .seek = 0,
+                .end = 0,
+            },
+        };
+    }
+
+    fn readVec(r: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
+        _ = data;
+        const self: *TrickleReader = @fieldParentPtr("reader", r);
+        if (self.pos >= self.data.len) return error.EndOfStream;
+        if (r.end >= r.buffer.len) return 0;
+        r.buffer[r.end] = self.data[self.pos];
+        r.end += 1;
+        self.pos += 1;
+        return 1;
+    }
+
+    fn stream(_: *std.Io.Reader, _: *std.Io.Writer, _: std.Io.Limit) std.Io.Reader.StreamError!usize {
+        return error.EndOfStream;
+    }
+
+    fn discard(_: *std.Io.Reader, _: std.Io.Limit) std.Io.Reader.Error!usize {
+        return error.EndOfStream;
+    }
+};
+
+fn encodeToBuffer(value: anytype, buffer: []u8) ![]const u8 {
+    var writer = std.Io.Writer.fixed(buffer);
+    try encode(value, &writer);
+    return writer.buffered();
+}
+
+test "decode from a streaming reader whose buffer holds the largest value" {
+    const Numeric = struct { id: u64, seq: i32, ratio: f64, ok: bool };
+    const value = Numeric{ .id = 0xdead_beef_cafe_1234, .seq = -4242, .ratio = 3.14159, .ok = true };
+
+    var encoded: [64]u8 = undefined;
+    const bytes = try encodeToBuffer(value, &encoded);
+
+    // 8 bytes is the largest fixed-size payload (u64/f64), and every field name
+    // here is a fixstr short enough to fit alongside its header.
+    for ([_]usize{ 8, 9, 16, 64 }) |buffer_len| {
+        var buffer: [64]u8 = undefined;
+        var trickle = TrickleReader.init(buffer[0..buffer_len], bytes);
+        const decoded = try decodeLeaky(Numeric, std.testing.allocator, &trickle.reader);
+        try std.testing.expectEqualDeep(value, decoded);
+    }
+}
+
+test "decode from a streaming reader with too small a buffer errors, never panics" {
+    const Numeric = struct { id: u64, seq: i32, ratio: f64, ok: bool };
+    const value = Numeric{ .id = 0xdead_beef_cafe_1234, .seq = -4242, .ratio = 3.14159, .ok = true };
+
+    var encoded: [64]u8 = undefined;
+    const bytes = try encodeToBuffer(value, &encoded);
+
+    // The u64 payload needs 8 buffered bytes; anything smaller cannot rebase.
+    for ([_]usize{ 1, 2, 4, 7 }) |buffer_len| {
+        var buffer: [8]u8 = undefined;
+        var trickle = TrickleReader.init(buffer[0..buffer_len], bytes);
+        try std.testing.expectError(
+            error.ReaderBufferTooSmall,
+            decodeLeaky(Numeric, std.testing.allocator, &trickle.reader),
+        );
+    }
+}
+
+test "decode a key too long for the reader buffer errors, never panics" {
+    // 33 characters, so the key is a str8 rather than a fixstr.
+    const LongKey = struct {
+        this_field_name_is_longer_than_32: u8,
+    };
+    const value = LongKey{ .this_field_name_is_longer_than_32 = 7 };
+
+    var encoded: [64]u8 = undefined;
+    const bytes = try encodeToBuffer(value, &encoded);
+
+    {
+        var buffer: [16]u8 = undefined;
+        var trickle = TrickleReader.init(&buffer, bytes);
+        try std.testing.expectError(
+            error.ReaderBufferTooSmall,
+            decodeLeaky(LongKey, std.testing.allocator, &trickle.reader),
+        );
+    }
+
+    {
+        var buffer: [64]u8 = undefined;
+        var trickle = TrickleReader.init(&buffer, bytes);
+        const decoded = try decodeLeaky(LongKey, std.testing.allocator, &trickle.reader);
+        try std.testing.expectEqualDeep(value, decoded);
+    }
 }
 
 test "encode/decode" {
