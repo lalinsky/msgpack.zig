@@ -17,7 +17,8 @@ const packInt = @import("int.zig").packInt;
 const unpackInt = @import("int.zig").unpackInt;
 
 const packStringLiteral = @import("string.zig").packStringLiteral;
-const unpackStringInto = @import("string.zig").unpackStringInto;
+const unpackStringBorrowed = @import("string.zig").unpackStringBorrowed;
+const eqlLiteral = @import("utils.zig").eqlLiteral;
 
 const packArrayHeader = @import("array.zig").packArrayHeader;
 const unpackArrayHeader = @import("array.zig").unpackArrayHeader;
@@ -164,8 +165,6 @@ pub fn unpackStructFromMapBody(reader: *std.Io.Reader, allocator: std.mem.Alloca
 
     var fields_seen = std.bit_set.StaticBitSet(fields.len).initEmpty();
 
-    var field_name_buffer: [256]u8 = undefined;
-
     var result: Type = undefined;
 
     for (0..field_count) |_| {
@@ -184,9 +183,9 @@ pub fn unpackStructFromMapBody(reader: *std.Io.Reader, allocator: std.mem.Alloca
                 }
             },
             .field_name => {
-                const field_name = try unpackStringInto(reader, &field_name_buffer);
+                const field_name = try unpackStringBorrowed(reader);
                 inline for (fields, 0..) |field, i| {
-                    if (std.mem.eql(u8, field.name, field_name)) {
+                    if (eqlLiteral(field.name, field_name)) {
                         fields_seen.set(i);
                         @field(result, field.name) = try unpackAny(reader, allocator, field.type);
                         break;
@@ -196,7 +195,7 @@ pub fn unpackStructFromMapBody(reader: *std.Io.Reader, allocator: std.mem.Alloca
                 }
             },
             .field_name_prefix => |prefix| {
-                const field_name = try unpackStringInto(reader, &field_name_buffer);
+                const field_name = try unpackStringBorrowed(reader);
                 inline for (fields, 0..) |field, i| {
                     if (std.mem.startsWith(u8, field.name, strPrefix(field_name, prefix))) {
                         fields_seen.set(i);

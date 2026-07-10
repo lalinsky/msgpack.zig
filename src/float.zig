@@ -4,6 +4,7 @@ const hdrs = @import("headers.zig");
 const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
 const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
+const takeInt = @import("utils.zig").takeInt;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 inline fn assertFloatType(comptime T: type) type {
@@ -49,12 +50,8 @@ pub fn packFloat(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: 
 }
 
 pub fn readFloatValue(reader: *std.Io.Reader, comptime SourceFloat: type, comptime TargetFloat: type) !TargetFloat {
-    const size = @sizeOf(SourceFloat);
-    var buf: [size]u8 = undefined;
-    try reader.readSliceAll(&buf);
-
     const IntType = std.meta.Int(.unsigned, @bitSizeOf(SourceFloat));
-    const int_value = std.mem.readInt(IntType, &buf, .big);
+    const int_value = try takeInt(reader, IntType);
 
     return @floatCast(@as(SourceFloat, @bitCast(int_value)));
 }

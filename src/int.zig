@@ -4,6 +4,7 @@ const hdrs = @import("headers.zig");
 const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
 const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
+const takeInt = @import("utils.zig").takeInt;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 inline fn assertIntType(comptime T: type) type {
@@ -155,10 +156,7 @@ pub fn unpackShortIntValue(header: u8, min_value: u8, max_value: u8, comptime Ta
 }
 
 pub fn unpackIntValue(reader: *std.Io.Reader, comptime SourceType: type, comptime TargetType: type) !TargetType {
-    const size = @divExact(@bitSizeOf(SourceType), 8);
-    var buf: [size]u8 = undefined;
-    try reader.readSliceAll(&buf);
-    const value = std.mem.readInt(SourceType, &buf, .big);
+    const value = try takeInt(reader, SourceType);
 
     const source_type_info = @typeInfo(SourceType).int;
     const target_type_info = @typeInfo(TargetType).int;

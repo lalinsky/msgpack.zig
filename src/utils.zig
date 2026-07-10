@@ -35,6 +35,25 @@ pub inline fn reserveArray(writer: *std.Io.Writer, comptime len: usize) ?*[len]u
     return null;
 }
 
+/// Reads a big-endian `T` from the reader. `Reader.takeInt` rebases, which
+/// asserts the reader's buffer can hold `@sizeOf(T)`; report that as an error
+/// rather than letting the assert fire.
+pub inline fn takeInt(reader: *std.Io.Reader, comptime T: type) !T {
+    if (reader.buffer.len < @divExact(@bitSizeOf(T), 8)) {
+        @branchHint(.unlikely);
+        return error.ReaderBufferTooSmall;
+    }
+    return reader.takeInt(T, .big);
+}
+
+/// Compares `value` against a comptime-known `name`. The length test is a
+/// compare against a constant, and the byte compare that follows has a
+/// comptime-known length, so it lowers to inline compares rather than a call.
+pub inline fn eqlLiteral(comptime name: []const u8, value: []const u8) bool {
+    if (value.len != name.len) return false;
+    return std.mem.eql(u8, value[0..name.len], name);
+}
+
 /// Writes a header byte followed by a big-endian `T`, as a single contiguous
 /// store when the writer's buffer has room, and as a single `writeAll`
 /// otherwise. Never splits the header from its payload across a drain.

@@ -16,7 +16,8 @@ const packInt = @import("int.zig").packInt;
 const unpackInt = @import("int.zig").unpackInt;
 
 const packStringLiteral = @import("string.zig").packStringLiteral;
-const unpackStringInto = @import("string.zig").unpackStringInto;
+const unpackStringBorrowed = @import("string.zig").unpackStringBorrowed;
+const eqlLiteral = @import("utils.zig").eqlLiteral;
 
 const packArrayHeader = @import("array.zig").packArrayHeader;
 const unpackArrayHeader = @import("array.zig").unpackArrayHeader;
@@ -150,7 +151,7 @@ pub fn packUnion(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: 
     }
 }
 
-pub fn unpackUnionAsMap(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, opts: UnionAsMapOptions) !T {
+pub fn unpackUnionAsMap(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, comptime opts: UnionAsMapOptions) !T {
     const len = if (@typeInfo(T) == .optional)
         try unpackMapHeader(reader, ?u16) orelse return null
     else
@@ -163,8 +164,6 @@ pub fn unpackUnionAsMap(reader: *std.Io.Reader, allocator: std.mem.Allocator, co
     const Type = NonOptional(T);
     const type_info = @typeInfo(Type);
     const fields = type_info.@"union".fields;
-
-    var field_name_buffer: [256]u8 = undefined;
 
     var result: Type = undefined;
 
@@ -182,9 +181,9 @@ pub fn unpackUnionAsMap(reader: *std.Io.Reader, allocator: std.mem.Allocator, co
             }
         },
         .field_name => {
-            const field_name = try unpackStringInto(reader, &field_name_buffer);
+            const field_name = try unpackStringBorrowed(reader);
             inline for (fields) |field| {
-                if (std.mem.eql(u8, field.name, field_name)) {
+                if (eqlLiteral(field.name, field_name)) {
                     const value = try unpackAny(reader, allocator, field.type);
                     result = @unionInit(Type, field.name, value);
                     break;
@@ -194,7 +193,7 @@ pub fn unpackUnionAsMap(reader: *std.Io.Reader, allocator: std.mem.Allocator, co
             }
         },
         .field_name_prefix => |prefix| {
-            const field_name = try unpackStringInto(reader, &field_name_buffer);
+            const field_name = try unpackStringBorrowed(reader);
             inline for (fields) |field| {
                 if (std.mem.startsWith(u8, field.name, strPrefix(field_name, prefix))) {
                     const value = try unpackAny(reader, allocator, field.type);
@@ -210,7 +209,7 @@ pub fn unpackUnionAsMap(reader: *std.Io.Reader, allocator: std.mem.Allocator, co
     return result;
 }
 
-pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, opts: UnionAsTaggedOptions) !T {
+pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, comptime opts: UnionAsTaggedOptions) !T {
     const len = if (@typeInfo(T) == .optional)
         try unpackMapHeader(reader, ?u16) orelse return null
     else
@@ -224,11 +223,8 @@ pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator,
     const type_info = @typeInfo(Type);
     const fields = type_info.@"union".fields;
 
-    var tag_field_buffer: [256]u8 = undefined;
-    var tag_value_buffer: [256]u8 = undefined;
-
-    const tag_field_name = try unpackStringInto(reader, &tag_field_buffer);
-    if (!std.mem.eql(u8, tag_field_name, opts.tag_field)) {
+    const tag_field_name = try unpackStringBorrowed(reader);
+    if (!eqlLiteral(opts.tag_field, tag_field_name)) {
         return error.InvalidTagField;
     }
 
@@ -241,11 +237,11 @@ pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator,
             union_field_index = field_index;
         },
         .field_name => {
-            const field_name = try unpackStringInto(reader, &tag_value_buffer);
+            const field_name = try unpackStringBorrowed(reader);
             union_field_name = field_name;
         },
         .field_name_prefix => {
-            const field_name = try unpackStringInto(reader, &tag_value_buffer);
+            const field_name = try unpackStringBorrowed(reader);
             union_field_name = field_name;
         },
     }
@@ -253,7 +249,7 @@ pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator,
     inline for (fields, 0..) |field, i| {
         const is_match = switch (opts.tag_value) {
             .field_index => union_field_index == i,
-            .field_name => if (union_field_name) |name| std.mem.eql(u8, field.name, name) else false,
+            .field_name => if (union_field_name) |name| eqlLiteral(field.name, name) else false,
             .field_name_prefix => |prefix| if (union_field_name) |name| std.mem.startsWith(u8, field.name, strPrefix(name, prefix)) else false,
         };
 
@@ -281,7 +277,7 @@ pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator,
 pub fn unpackUnion(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
     const Type = NonOptional(T);
 
-    const format = if (std.meta.hasFn(Type, "msgpackFormat")) Type.msgpackFormat() else default_union_format;
+    const format = comptime if (std.meta.hasFn(Type, "msgpackFormat")) Type.msgpackFormat() else default_union_format;
     switch (format) {
         .as_map => |opts| {
             return try unpackUnionAsMap(reader, allocator, T, opts);
