@@ -3,6 +3,7 @@ const hdrs = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
+const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 inline fn assertIntType(comptime T: type) type {
@@ -66,12 +67,6 @@ pub fn getIntSize(comptime T: type, value: T) usize {
     }
 }
 
-pub fn packIntValue(writer: *std.Io.Writer, comptime T: type, value: T) !void {
-    var buf: [@sizeOf(T)]u8 = undefined;
-    std.mem.writeInt(T, buf[0..], value, .big);
-    try writer.writeAll(buf[0..]);
-}
-
 pub fn packInt(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T) !void {
     const Type = assertIntType(T);
     const value: Type = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
@@ -122,8 +117,7 @@ pub fn packInt(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T)
 }
 
 pub fn packFixedSizeInt(writer: *std.Io.Writer, comptime T: type, value: T) !void {
-    try writer.writeByte(resolveFixedSizeIntHeader(T));
-    try packIntValue(writer, T, value);
+    return packHeaderAndInt(writer, resolveFixedSizeIntHeader(T), T, value);
 }
 
 inline fn resolveFixedSizeIntHeader(comptime T: type) u8 {

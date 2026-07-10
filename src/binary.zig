@@ -7,7 +7,7 @@ const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
-const packIntValue = @import("int.zig").packIntValue;
+const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
 const unpackIntValue = @import("int.zig").unpackIntValue;
 const unpackShortIntValue = @import("int.zig").unpackShortIntValue;
 
@@ -29,14 +29,11 @@ pub fn sizeOfPackedBinary(len: usize) !usize {
 
 pub fn packBinaryHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= std.math.maxInt(u8)) {
-        try writer.writeByte(hdrs.BIN8);
-        try packIntValue(writer, u8, @intCast(len));
+        try packHeaderAndInt(writer, hdrs.BIN8, u8, @intCast(len));
     } else if (len <= std.math.maxInt(u16)) {
-        try writer.writeByte(hdrs.BIN16);
-        try packIntValue(writer, u16, @intCast(len));
+        try packHeaderAndInt(writer, hdrs.BIN16, u16, @intCast(len));
     } else if (len <= std.math.maxInt(u32)) {
-        try writer.writeByte(hdrs.BIN32);
-        try packIntValue(writer, u32, @intCast(len));
+        try packHeaderAndInt(writer, hdrs.BIN32, u32, @intCast(len));
     } else {
         return error.BinaryTooLong;
     }

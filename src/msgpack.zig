@@ -15,7 +15,6 @@ pub const unpackBool = @import("bool.zig").unpackBool;
 pub const getIntSize = @import("int.zig").getIntSize;
 pub const getMaxIntSize = @import("int.zig").getMaxIntSize;
 pub const packInt = @import("int.zig").packInt;
-pub const packIntValue = @import("int.zig").packIntValue;
 pub const unpackInt = @import("int.zig").unpackInt;
 
 pub const getFloatSize = @import("float.zig").getFloatSize;
@@ -40,6 +39,7 @@ pub const sizeOfPackedString = @import("string.zig").sizeOfPackedString;
 pub const sizeOfPackedStringHeader = @import("string.zig").sizeOfPackedStringHeader;
 pub const packStringHeader = @import("string.zig").packStringHeader;
 pub const packString = @import("string.zig").packString;
+pub const packStringLiteral = @import("string.zig").packStringLiteral;
 pub const unpackStringHeader = @import("string.zig").unpackStringHeader;
 pub const unpackString = @import("string.zig").unpackString;
 pub const unpackStringInto = @import("string.zig").unpackStringInto;

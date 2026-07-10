@@ -16,7 +16,7 @@ const unpackMapHeader = @import("map.zig").unpackMapHeader;
 const packInt = @import("int.zig").packInt;
 const unpackInt = @import("int.zig").unpackInt;
 
-const packString = @import("string.zig").packString;
+const packStringLiteral = @import("string.zig").packStringLiteral;
 const unpackStringInto = @import("string.zig").unpackStringInto;
 
 const packArrayHeader = @import("array.zig").packArrayHeader;
@@ -103,10 +103,10 @@ pub fn packStructAsMap(writer: *std.Io.Writer, comptime T: type, value: T, compt
                     try packInt(writer, u16, i);
                 },
                 .field_name => {
-                    try packString(writer, field.name);
+                    try packStringLiteral(writer, field.name);
                 },
                 .field_name_prefix => |prefix| {
-                    try packString(writer, strPrefix(field.name, prefix));
+                    try packStringLiteral(writer, comptime strPrefix(field.name, prefix));
                 },
                 .custom => {
                     const key = comptime T.msgpackFieldKey(@field(FieldEnum, field.name));
