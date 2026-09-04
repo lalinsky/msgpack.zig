@@ -206,7 +206,7 @@ pub const Unpacker = struct {
     }
 
     pub fn readArray(self: Unpacker, comptime T: type) ![]T {
-        return unpackArray(self.reader, self.allocator, T);
+        return unpackArray(self.reader, self.allocator, []T);
     }
 
     pub fn readArrayInto(self: Unpacker, comptime T: type, buffer: []T) ![]T {
@@ -488,6 +488,43 @@ test "unpacker readBinary reads bin8" {
     try std.testing.expectEqualSlices(u8, "abc", value);
 }
 
+test "unpacker readArray takes the element type" {
+    // `refAllDecls` does not instantiate generic functions, so a signature
+    // mismatch here stays invisible until something actually calls it.
+    const packed_u32_array = [_]u8{ 0x93, 0x01, 0x02, 0x03 };
+    var reader = std.Io.Reader.fixed(&packed_u32_array);
+    const value = try unpacker(&reader, std.testing.allocator).readArray(u32);
+    defer std.testing.allocator.free(value);
+    try std.testing.expectEqualSlices(u32, &[_]u32{ 1, 2, 3 }, value);
+}
+
+test "custom msgpackWrite/msgpackRead using writeArray and readArray" {
+    // The "completely custom format" example from README.md, verbatim.
+    const Message = struct {
+        items: []u32,
+
+        pub fn msgpackWrite(self: @This(), p: anytype) !void {
+            try p.writeArray(u32, self.items);
+        }
+
+        pub fn msgpackRead(u: anytype) !@This() {
+            const items = try u.readArray(u32);
+            return .{ .items = items };
+        }
+    };
+
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
+
+    var items = [_]u32{ 1, 2, 3 };
+    try encode(Message{ .items = &items }, &aw.writer);
+
+    const decoded = try decodeFromSlice(Message, std.testing.allocator, aw.written());
+    defer decoded.deinit();
+
+    try std.testing.expectEqualSlices(u32, &items, decoded.value.items);
+}
+    
 test "unpacker readUnion" {
     // `refAllDecls` does not instantiate generic functions, so a signature
     // mismatch here stays invisible until something actually calls it.

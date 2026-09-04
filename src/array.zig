@@ -107,11 +107,11 @@ pub fn Array(comptime T: type) type {
         data: []T,
 
         pub fn msgpackWrite(self: @This(), packer: anytype) !void {
-            try packer.writeArray(self.data);
+            try packer.writeArray(T, self.data);
         }
 
         pub fn msgpackRead(unpacker: anytype) !@This() {
-            const data = try unpacker.readArray([]T);
+            const data = try unpacker.readArray(T);
             return .{ .data = data };
         }
     };
@@ -140,4 +140,19 @@ test "sizeOfPackedArray" {
 
 test "sizeOfPackedArrayHeader: array16 boundary" {
     try std.testing.expectEqual(3, sizeOfPackedArrayHeader(16));
+}
+
+test "Array wrapper round trip" {
+    const packed_u32_array = [_]u8{ 0x93, 0x01, 0x02, 0x03 };
+    var items = [_]u32{ 1, 2, 3 };
+
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
+    try packAny(&aw.writer, Array(u32){ .data = &items });
+    try std.testing.expectEqualSlices(u8, &packed_u32_array, aw.written());
+
+    var reader = std.Io.Reader.fixed(aw.written());
+    const decoded = try unpackAny(&reader, std.testing.allocator, Array(u32));
+    defer std.testing.allocator.free(decoded.data);
+    try std.testing.expectEqualSlices(u32, &items, decoded.data);
 }
