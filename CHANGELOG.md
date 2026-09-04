@@ -5,15 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-09-04
 
 ### Added
 - `skip_unknown_fields` option on `StructAsMapOptions` and `UnionAsTaggedOptions`, to step over map entries with no matching field instead of failing with `error.UnknownStructField`; off by default
 - `skipAny`, which discards one complete msgpack value of any type from a reader
 
+### Changed
+- Faster encoding and decoding of fixed-size values, and of struct map keys, by avoiding intermediate copies
+
 ### Removed
 - `sizeOfPackedArray` and `sizeOfPackedMap`, which under-reported sizes by adding the element count to the header size; the `sizeOfPackedArrayHeader` and `sizeOfPackedMapHeader` variants are correct and remain
 - `Packer.getArrayHeaderSize` and `Packer.getMapHeaderSize`; call `sizeOfPackedArrayHeader` and `sizeOfPackedMapHeader` directly
+
+### Fixed
+- `Unpacker.readArray` could not be instantiated with any type; it now takes the element type, like `Packer.writeArray` and `Unpacker.readArrayInto`, so the custom format example in the README compiles
+- `Unpacker.readUnion` returned `!?T` while `unpackUnion` returns `!T`, so it could not be instantiated
 
 ## [0.7.0] - 2026-04-30
 
@@ -58,7 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release
 
-[Unreleased]: https://github.com/lalinsky/msgpack.zig/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/lalinsky/msgpack.zig/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/lalinsky/msgpack.zig/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/lalinsky/msgpack.zig/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/lalinsky/msgpack.zig/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/lalinsky/msgpack.zig/compare/v0.4.0...v0.5.0
