@@ -88,8 +88,8 @@ const Message = struct {
 };
 ```
 
-Both options have the disadvantage that changing the fields in the struct will have impact on the encoded message, so you need to be careful about backwarads compatibility.
-You can also use custom protobuf-like field keys to ensure full compatibility even after changing the struct:
+Both options have the disadvantage that changing the fields in the struct will have impact on the encoded message, so you need to be careful about backwards compatibility.
+You can also use custom protobuf-like field keys, so that renaming or reordering fields does not change the encoded message:
 
 ```zig
 const std = @import("std");
@@ -111,6 +111,31 @@ const Message = struct {
     }
 };
 ```
+
+Stable keys alone are not enough to read messages from a *newer* encoder, though: by default a key
+that matches no field is an error. Set `skip_unknown_fields` to step over those entries instead, so
+adding a field on the producer does not break existing consumers:
+
+```zig
+const Message = struct {
+    name: []const u8,
+    age: u8,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .custom, .skip_unknown_fields = true } };
+    }
+
+    pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
+        return switch (field) {
+            .name => 1,
+            .age => 2,
+        };
+    }
+};
+```
+
+It works with every key mode, and with `.as_tagged` unions. Missing fields are already accepted
+without any option, as long as they have a default value or are optional.
 
 Or you can use a completely custom format:
 

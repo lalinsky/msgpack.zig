@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `skip_unknown_fields` option on `StructAsMapOptions` and `UnionAsTaggedOptions`, to step over map entries with no matching field instead of failing with `error.UnknownStructField`; off by default
+- `skipAny`, which discards one complete msgpack value of any type from a reader
+
 ### Removed
 - `sizeOfPackedArray` and `sizeOfPackedMap`, which under-reported sizes by adding the element count to the header size; the `sizeOfPackedArrayHeader` and `sizeOfPackedMapHeader` variants are correct and remain
 - `Packer.getArrayHeaderSize` and `Packer.getMapHeaderSize`; call `sizeOfPackedArrayHeader` and `sizeOfPackedMapHeader` directly

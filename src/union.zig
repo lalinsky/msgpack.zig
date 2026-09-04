@@ -46,6 +46,10 @@ pub const UnionAsTaggedOptions = struct {
         field_name_prefix: u8,
         field_index,
     } = .field_name,
+    /// Step over entries in the flattened map that match neither the tag field
+    /// nor a field of the selected variant. See
+    /// `StructAsMapOptions.skip_unknown_fields`.
+    skip_unknown_fields: bool = false,
 };
 
 pub const UnionFormat = union(enum) {
@@ -262,7 +266,10 @@ pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator,
                 }
                 return @unionInit(Type, field.name, {});
             } else if (field_type_info == .@"struct") {
-                const struct_opts = StructAsMapOptions{ .key = .field_name };
+                const struct_opts = StructAsMapOptions{
+                    .key = .field_name,
+                    .skip_unknown_fields = opts.skip_unknown_fields,
+                };
                 const struct_value = try unpackStructFromMapBody(reader, allocator, field.type, len - 1, struct_opts);
                 return @unionInit(Type, field.name, struct_value);
             } else {
@@ -475,4 +482,71 @@ test "readUnion: tagged format with field index" {
     var reader = std.Io.Reader.fixed(&msg4_get_packed);
     const value = try unpackUnion(&reader, NoAllocator.allocator(), Msg4);
     try std.testing.expectEqual(99, value.get.key);
+}
+
+test "readUnion: as_tagged rejects unknown variant fields by default" {
+    const Msg = union(enum) {
+        get: struct { key: u32 },
+
+        pub fn msgpackFormat() UnionFormat {
+            return .{ .as_tagged = .{} };
+        }
+    };
+
+    const buffer = [_]u8{
+        0x83, // map with 3 entries
+        0xa4, 't', 'y', 'p', 'e', 0xa3, 'g', 'e', 't', // "type": "get"
+        0xa3, 'k', 'e', 'y', 0x2a, // "key": 42
+        0xa1, 'z', 0xc3, // "z": true, not a field of `get`
+    };
+    var reader = std.Io.Reader.fixed(&buffer);
+    try std.testing.expectError(
+        error.UnknownStructField,
+        unpackUnion(&reader, NoAllocator.allocator(), Msg),
+    );
+}
+
+test "readUnion: as_tagged skip_unknown_fields steps over extra variant fields" {
+    const Msg = union(enum) {
+        get: struct { key: u32 },
+        put: struct { key: u32, val: u64 },
+
+        pub fn msgpackFormat() UnionFormat {
+            return .{ .as_tagged = .{ .skip_unknown_fields = true } };
+        }
+    };
+
+    // A newer producer added a field to the `get` variant.
+    const buffer = [_]u8{
+        0x84, // map with 4 entries
+        0xa4, 't', 'y', 'p', 'e', 0xa3, 'g', 'e', 't', // "type": "get"
+        0xa1, 'z', 0x92, 0x01, 0x02, // "z": [1,2], unknown, a container
+        0xa3, 'k', 'e', 'y', 0x2a, // "key": 42
+        0xa1, 'w', 0xc0, // "w": nil, unknown
+    };
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackUnion(&reader, NoAllocator.allocator(), Msg);
+    try std.testing.expectEqual(@as(u32, 42), value.get.key);
+}
+
+test "readUnion: as_tagged skip_unknown_fields still requires the variant's own fields" {
+    const Msg = union(enum) {
+        put: struct { key: u32, val: u64 },
+
+        pub fn msgpackFormat() UnionFormat {
+            return .{ .as_tagged = .{ .skip_unknown_fields = true } };
+        }
+    };
+
+    const buffer = [_]u8{
+        0x83, // map with 3 entries
+        0xa4, 't', 'y', 'p', 'e', 0xa3, 'p', 'u', 't', // "type": "put"
+        0xa3, 'k', 'e', 'y', 0x2a, // "key": 42
+        0xa1, 'z', 0xc3, // "z": true, skipped; `val` never arrives
+    };
+    var reader = std.Io.Reader.fixed(&buffer);
+    try std.testing.expectError(
+        error.MissingStructFields,
+        unpackUnion(&reader, NoAllocator.allocator(), Msg),
+    );
 }

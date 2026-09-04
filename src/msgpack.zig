@@ -69,6 +69,8 @@ pub const getMaxEnumSize = @import("enum.zig").getMaxEnumSize;
 pub const packEnum = @import("enum.zig").packEnum;
 pub const unpackEnum = @import("enum.zig").unpackEnum;
 
+pub const skipAny = @import("skip.zig").skipAny;
+
 pub const packAny = @import("any.zig").packAny;
 pub const unpackAny = @import("any.zig").unpackAny;
 
@@ -514,7 +516,7 @@ test "custom msgpackWrite/msgpackRead using writeArray and readArray" {
 
     try std.testing.expectEqualSlices(u32, &items, decoded.value.items);
 }
-    
+
 test "unpacker readUnion" {
     // `refAllDecls` does not instantiate generic functions, so a signature
     // mismatch here stays invisible until something actually calls it.
