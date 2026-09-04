@@ -26,10 +26,6 @@ pub fn sizeOfPackedMapHeader(len: usize) !usize {
     }
 }
 
-pub fn sizeOfPackedMap(len: usize) !usize {
-    return try sizeOfPackedMapHeader(len) + len;
-}
-
 pub fn packMapHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= hdrs.FIXMAP_MAX - hdrs.FIXMAP_MIN) {
         try writer.writeByte(hdrs.FIXMAP_MIN + @as(u8, @intCast(len)));
@@ -147,10 +143,6 @@ test "unpackMap unmanaged" {
     defer map.deinit(std.testing.allocator);
 
     try std.testing.expectEqual(2, map.get(1));
-}
-
-test "sizeOfPackedMap" {
-    try std.testing.expectEqual(1, sizeOfPackedMap(0));
 }
 
 test "sizeOfPackedMapHeader: map16 boundary" {
