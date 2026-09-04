@@ -23,6 +23,8 @@ const eqlLiteral = @import("utils.zig").eqlLiteral;
 const packArrayHeader = @import("array.zig").packArrayHeader;
 const unpackArrayHeader = @import("array.zig").unpackArrayHeader;
 
+const skipAny = @import("skip.zig").skipAny;
+
 const packAny = @import("any.zig").packAny;
 const unpackAny = @import("any.zig").unpackAny;
 
@@ -38,6 +40,11 @@ pub const StructAsMapOptions = struct {
     },
     omit_nulls: bool = true,
     omit_defaults: bool = false,
+    /// Step over map entries whose key matches no field, instead of failing
+    /// with `error.UnknownStructField`. Lets a decoder read messages from a
+    /// newer encoder that added fields. Missing fields are already tolerated
+    /// unconditionally, via defaults and optionals.
+    skip_unknown_fields: bool = false,
 };
 
 pub const StructAsArrayOptions = struct {};
@@ -179,7 +186,8 @@ pub fn unpackStructFromMapBody(reader: *std.Io.Reader, allocator: std.mem.Alloca
                         break;
                     }
                 } else {
-                    return error.UnknownStructField;
+                    if (!opts.skip_unknown_fields) return error.UnknownStructField;
+                    try skipAny(reader);
                 }
             },
             .field_name => {
@@ -191,7 +199,8 @@ pub fn unpackStructFromMapBody(reader: *std.Io.Reader, allocator: std.mem.Alloca
                         break;
                     }
                 } else {
-                    return error.UnknownStructField;
+                    if (!opts.skip_unknown_fields) return error.UnknownStructField;
+                    try skipAny(reader);
                 }
             },
             .field_name_prefix => |prefix| {
@@ -203,7 +212,8 @@ pub fn unpackStructFromMapBody(reader: *std.Io.Reader, allocator: std.mem.Alloca
                         break;
                     }
                 } else {
-                    return error.UnknownStructField;
+                    if (!opts.skip_unknown_fields) return error.UnknownStructField;
+                    try skipAny(reader);
                 }
             },
             .custom => {
@@ -216,7 +226,8 @@ pub fn unpackStructFromMapBody(reader: *std.Io.Reader, allocator: std.mem.Alloca
                         break;
                     }
                 } else {
-                    return error.UnknownStructField;
+                    if (!opts.skip_unknown_fields) return error.UnknownStructField;
+                    try skipAny(reader);
                 }
             },
         }
@@ -711,4 +722,160 @@ test "readStruct: msgpackFieldKey" {
     var reader = std.Io.Reader.fixed(&buffer);
     const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, value);
+}
+
+test "readStruct: unknown fields are rejected by default" {
+    const Msg = struct { a: u32 };
+
+    const buffer = [_]u8{
+        0x82, // map with 2 entries
+        0xa1, 'a', 0x01, // "a": 1
+        0xa1, 'z', 0x02, // "z": 2, no such field
+    };
+    var reader = std.Io.Reader.fixed(&buffer);
+    try std.testing.expectError(
+        error.UnknownStructField,
+        unpackStruct(&reader, NoAllocator.allocator(), Msg),
+    );
+}
+
+test "readStruct: skip_unknown_fields steps over entries with no matching field" {
+    const Msg = struct {
+        a: u32,
+        b: u32,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .field_name, .skip_unknown_fields = true } };
+        }
+    };
+
+    const buffer = [_]u8{
+        0x84, // map with 4 entries
+        0xa1, 'z', 0xc0, // "z": nil, before any known field
+        0xa1, 'a', 0x01, // "a": 1
+        0xa1, 'y', 0x93, 0x01, 0x02, 0x03, // "y": [1,2,3], a container
+        0xa1, 'b', 0x02, // "b": 2
+    };
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
+    try std.testing.expectEqual(1, value.a);
+    try std.testing.expectEqual(2, value.b);
+}
+
+test "readStruct: skip_unknown_fields with a deeply nested unknown value" {
+    const Msg = struct {
+        a: u32,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .field_name, .skip_unknown_fields = true } };
+        }
+    };
+
+    const buffer = [_]u8{
+        0x82, // map with 2 entries
+        0xa1, 'z', // "z":
+        0x82, //   map with 2 entries
+        0xa1, 'p', 0x92, 0x01, 0x81, 0xa1, 'q', 0xc3, //     "p": [1, {"q": true}]
+        0xa1, 'r', 0xa2, 'h', 'i', //     "r": "hi"
+        0xa1, 'a', 0x07, // "a": 7
+    };
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
+    try std.testing.expectEqual(7, value.a);
+}
+
+test "readStruct: skip_unknown_fields by field index" {
+    const Msg = struct {
+        a: u32,
+        b: u32,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .field_index, .skip_unknown_fields = true } };
+        }
+    };
+
+    const buffer = [_]u8{
+        0x83, // map with 3 entries
+        0x00, 0x01, // 0: 1
+        0x02, 0xc3, // 2: true, no field at that index
+        0x01, 0x02, // 1: 2
+    };
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
+    try std.testing.expectEqual(1, value.a);
+    try std.testing.expectEqual(2, value.b);
+}
+
+test "readStruct: skip_unknown_fields with custom field keys" {
+    const Msg = struct {
+        a: u32,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .custom, .skip_unknown_fields = true } };
+        }
+
+        pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
+            return switch (field) {
+                .a => 1,
+            };
+        }
+    };
+
+    const buffer = [_]u8{
+        0x82, // map with 2 entries
+        0x09, 0xa3, 'o', 'l', 'd', // 9: "old", retired field number
+        0x01, 0x05, // 1: 5
+    };
+    var reader = std.Io.Reader.fixed(&buffer);
+    const value = try unpackStruct(&reader, NoAllocator.allocator(), Msg);
+    try std.testing.expectEqual(5, value.a);
+}
+
+test "readStruct: a newer encoder's message decodes into an older struct" {
+    const V2 = struct {
+        id: u32,
+        name: []const u8,
+        added_later: bool,
+    };
+    const V1 = struct {
+        id: u32,
+        name: []const u8,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .field_name, .skip_unknown_fields = true } };
+        }
+    };
+
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
+    try packStruct(&aw.writer, V2, .{ .id = 42, .name = "hello", .added_later = true });
+
+    var reader = std.Io.Reader.fixed(aw.written());
+    const value = try unpackStruct(&reader, std.testing.allocator, V1);
+    defer std.testing.allocator.free(value.name);
+
+    try std.testing.expectEqual(42, value.id);
+    try std.testing.expectEqualStrings("hello", value.name);
+}
+
+test "readStruct: skipping an unknown field does not satisfy a missing one" {
+    const Msg = struct {
+        a: u32,
+        b: u32,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_map = .{ .key = .field_name, .skip_unknown_fields = true } };
+        }
+    };
+
+    const buffer = [_]u8{
+        0x82, // map with 2 entries
+        0xa1, 'a', 0x01, // "a": 1
+        0xa1, 'z', 0x02, // "z": 2, skipped, so b is still absent
+    };
+    var reader = std.Io.Reader.fixed(&buffer);
+    try std.testing.expectError(
+        error.MissingStructFields,
+        unpackStruct(&reader, NoAllocator.allocator(), Msg),
+    );
 }
