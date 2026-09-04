@@ -23,10 +23,6 @@ pub fn sizeOfPackedBinaryHeader(len: usize) !usize {
     }
 }
 
-pub fn sizeOfPackedBinary(len: usize) !usize {
-    return try sizeOfPackedBinaryHeader(len) + len;
-}
-
 pub fn packBinaryHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= std.math.maxInt(u8)) {
         try packHeaderAndInt(writer, hdrs.BIN8, u8, @intCast(len));
@@ -125,8 +121,4 @@ test "packBinary: null" {
     var writer = std.Io.Writer.fixed(&buffer);
     try packBinary(&writer, ?[]const u8, null);
     try std.testing.expectEqualSlices(u8, &packed_null, writer.buffered());
-}
-
-test "sizeOfPackedBinary" {
-    try std.testing.expectEqual(2, sizeOfPackedBinary(0));
 }

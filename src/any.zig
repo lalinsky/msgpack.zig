@@ -1,31 +1,22 @@
 const std = @import("std");
-const hdrs = @import("headers.zig");
 
-const NonOptional = @import("utils.zig").NonOptional;
-
-const getNullSize = @import("null.zig").getNullSize;
 const packNull = @import("null.zig").packNull;
 const unpackNull = @import("null.zig").unpackNull;
 
-const getBoolSize = @import("bool.zig").getBoolSize;
 const packBool = @import("bool.zig").packBool;
 const unpackBool = @import("bool.zig").unpackBool;
 
-const getIntSize = @import("int.zig").getIntSize;
 const packInt = @import("int.zig").packInt;
 const unpackInt = @import("int.zig").unpackInt;
 
-const getFloatSize = @import("float.zig").getFloatSize;
 const packFloat = @import("float.zig").packFloat;
 const unpackFloat = @import("float.zig").unpackFloat;
 
-const sizeOfPackedString = @import("string.zig").sizeOfPackedString;
 const packString = @import("string.zig").packString;
 const unpackString = @import("string.zig").unpackString;
 const String = @import("string.zig").String;
 const Binary = @import("binary.zig").Binary;
 
-const sizeOfPackedArray = @import("array.zig").sizeOfPackedArray;
 const packArray = @import("array.zig").packArray;
 const unpackArray = @import("array.zig").unpackArray;
 
@@ -35,7 +26,6 @@ const unpackStruct = @import("struct.zig").unpackStruct;
 const packUnion = @import("union.zig").packUnion;
 const unpackUnion = @import("union.zig").unpackUnion;
 
-const getEnumSize = @import("enum.zig").getEnumSize;
 const packEnum = @import("enum.zig").packEnum;
 const unpackEnum = @import("enum.zig").unpackEnum;
 
@@ -54,33 +44,6 @@ inline fn isString(comptime T: type) bool {
         else => {},
     }
     return false;
-}
-
-pub fn sizeOfPackedAny(comptime T: type, value: T) !usize {
-    if (@typeInfo(T) == .optional) {
-        if (value) |v| {
-            return sizeOfPackedAny(@TypeOf(v), v);
-        }
-        return getNullSize();
-    }
-
-    switch (@typeInfo(NonOptional(T))) {
-        .bool => return getBoolSize(),
-        .int => return getIntSize(T, value),
-        .float => return getFloatSize(T, value),
-        .@"enum" => return getEnumSize(T, value),
-        .pointer => |ptr_info| {
-            if (ptr_info.size == .slice) {
-                if (isString(T)) {
-                    return try sizeOfPackedString(value.len);
-                } else {
-                    return try sizeOfPackedArray(value.len);
-                }
-            }
-        },
-        else => {},
-    }
-    @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
 }
 
 pub fn packAny(writer: *std.Io.Writer, value: anytype) !void {
@@ -383,18 +346,4 @@ test "packAny/unpackAny: Binary struct" {
     const result = try unpackAny(&reader, std.testing.allocator, Binary);
     defer std.testing.allocator.free(result.data);
     try std.testing.expectEqualSlices(u8, "\x01\x02\x03\x04", result.data);
-}
-
-test "sizeOfPackedAny: string slice" {
-    try std.testing.expectEqual(4, try sizeOfPackedAny([]const u8, "abc"));
-}
-
-test "sizeOfPackedAny: array slice" {
-    const values = [_]u16{ 1, 2, 3 };
-    try std.testing.expectEqual(4, try sizeOfPackedAny([]const u16, &values));
-}
-
-test "sizeOfPackedAny: optional null and value" {
-    try std.testing.expectEqual(1, try sizeOfPackedAny(?[]const u8, null));
-    try std.testing.expectEqual(4, try sizeOfPackedAny(?[]const u8, "abc"));
 }

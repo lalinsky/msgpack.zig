@@ -25,10 +25,6 @@ pub fn sizeOfPackedArrayHeader(len: usize) !usize {
     }
 }
 
-pub fn sizeOfPackedArray(len: usize) !usize {
-    return try sizeOfPackedArrayHeader(len) + len;
-}
-
 pub fn packArrayHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= hdrs.FIXARRAY_MAX - hdrs.FIXARRAY_MIN) {
         try writer.writeByte(hdrs.FIXARRAY_MIN + @as(u8, @intCast(len)));
@@ -132,10 +128,6 @@ test "packArray: null" {
     var writer = std.Io.Writer.fixed(&buffer);
     try packArray(&writer, ?[]const u8, null);
     try std.testing.expectEqualSlices(u8, &packed_null, writer.buffered());
-}
-
-test "sizeOfPackedArray" {
-    try std.testing.expectEqual(1, sizeOfPackedArray(0));
 }
 
 test "sizeOfPackedArrayHeader: array16 boundary" {

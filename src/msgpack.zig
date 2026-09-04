@@ -22,12 +22,10 @@ pub const getMaxFloatSize = @import("float.zig").getMaxFloatSize;
 pub const packFloat = @import("float.zig").packFloat;
 pub const unpackFloat = @import("float.zig").unpackFloat;
 
-pub const sizeOfPackedArray = @import("array.zig").sizeOfPackedArray;
 pub const sizeOfPackedArrayHeader = @import("array.zig").sizeOfPackedArrayHeader;
 pub const packArray = @import("array.zig").packArray;
 pub const packArrayHeader = @import("array.zig").packArrayHeader;
 
-pub const sizeOfPackedMap = @import("map.zig").sizeOfPackedMap;
 pub const sizeOfPackedMapHeader = @import("map.zig").sizeOfPackedMapHeader;
 pub const packMap = @import("map.zig").packMap;
 pub const packMapHeader = @import("map.zig").packMapHeader;
@@ -113,20 +111,12 @@ pub const Packer = struct {
         return packBinary(self.writer, []const u8, value);
     }
 
-    pub fn getArrayHeaderSize(len: usize) !usize {
-        return sizeOfPackedArrayHeader(len);
-    }
-
     pub fn writeArrayHeader(self: Packer, len: usize) !void {
         return packArrayHeader(self.writer, len);
     }
 
     pub fn writeArray(self: Packer, comptime T: type, value: []const T) !void {
         return packArray(self.writer, @TypeOf(value), value);
-    }
-
-    pub fn getMapHeaderSize(len: usize) !usize {
-        return sizeOfPackedMapHeader(len);
     }
 
     pub fn writeMapHeader(self: Packer, len: usize) !void {

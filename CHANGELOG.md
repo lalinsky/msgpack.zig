@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+- `sizeOfPackedArray` and `sizeOfPackedMap`, which added the *element count* to
+  the header size as if every element encoded to one byte, and so under-reported
+  the encoded size of any array or map whose elements are not single bytes. The
+  header functions `sizeOfPackedArrayHeader` and `sizeOfPackedMapHeader` are
+  correct and remain, as do `sizeOfPackedString` and `sizeOfPackedStringHeader`.
+- `Packer.getArrayHeaderSize` and `Packer.getMapHeaderSize`, which were declared
+  without a `self` parameter and so were never callable as methods. Call
+  `sizeOfPackedArrayHeader` / `sizeOfPackedMapHeader` directly instead.
+- The internal `sizeOfPackedAny` and `sizeOfPackedBinary`, neither of which was
+  ever exported or called.
+
+To compute an encoded size, encode into a counting writer rather than predicting
+the size separately; that reuses the encoder and cannot drift from it.
+
 ## [0.7.0] - 2026-04-30
 
 ### Added
