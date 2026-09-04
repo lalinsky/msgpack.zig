@@ -229,7 +229,7 @@ pub const Unpacker = struct {
         return unpackStruct(self.reader, self.allocator, T);
     }
 
-    pub fn readUnion(self: Unpacker, comptime T: type) !?T {
+    pub fn readUnion(self: Unpacker, comptime T: type) !T {
         return unpackUnion(self.reader, self.allocator, T);
     }
 
@@ -486,4 +486,26 @@ test "unpacker readBinary reads bin8" {
     const value = try unpacker(&reader, std.testing.allocator).readBinary();
     defer std.testing.allocator.free(value);
     try std.testing.expectEqualSlices(u8, "abc", value);
+}
+
+test "unpacker readUnion" {
+    // `refAllDecls` does not instantiate generic functions, so a signature
+    // mismatch here stays invisible until something actually calls it.
+    const Value = union(enum) { a: u8, b: u16 };
+
+    const packed_union_a = [_]u8{ 0x81, 0xa1, 'a', 0x01 };
+    var reader = std.Io.Reader.fixed(&packed_union_a);
+    try std.testing.expectEqual(
+        Value{ .a = 1 },
+        try unpacker(&reader, std.testing.allocator).readUnion(Value),
+    );
+
+    // An optional union is expressed by asking for `?Value`, which
+    // `unpackUnion` already handles.
+    const packed_null_union = [_]u8{0xc0};
+    var null_reader = std.Io.Reader.fixed(&packed_null_union);
+    try std.testing.expectEqual(
+        @as(?Value, null),
+        try unpacker(&null_reader, std.testing.allocator).readUnion(?Value),
+    );
 }
