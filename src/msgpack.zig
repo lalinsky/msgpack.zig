@@ -538,3 +538,177 @@ test "unpacker readUnion" {
         try unpacker(&null_reader, std.testing.allocator).readUnion(?Value),
     );
 }
+
+// -- Packer/Unpacker smoke coverage ------------------------------------------
+//
+// Zig only analyses a generic function when something instantiates it, and
+// `refAllDecls` does not instantiate generics. A `Packer` or `Unpacker` method
+// that no test calls is therefore never type-checked, however wrong it is.
+// That is how `readArray` and `readUnion` shipped with signatures that could
+// not compile against any type argument, and how `skipAny` nearly shipped
+// having never been analysed at all.
+//
+// The tests below call every method once with concrete types. `assertCovered`
+// then fails the build if a method exists that the list does not name, so a
+// newly added method cannot quietly go unexercised.
+
+fn assertCovered(comptime T: type, comptime covered: []const []const u8) void {
+    comptime {
+        for (@typeInfo(T).@"struct".decls) |decl| {
+            if (@typeInfo(@TypeOf(@field(T, decl.name))) != .@"fn") continue;
+            for (covered) |name| {
+                if (std.mem.eql(u8, name, decl.name)) break;
+            } else {
+                @compileError(@typeName(T) ++ "." ++ decl.name ++
+                    " is not exercised by the smoke test; add a call for it");
+            }
+        }
+    }
+}
+
+const SmokeStruct = struct { a: u8 };
+const SmokeUnion = union(enum) { a: u8 };
+const SmokeEnum = enum(u8) { a = 1 };
+
+test "smoke: every Packer method is instantiated and called" {
+    assertCovered(Packer, &.{
+        "init",        "writeNull",         "writeBool",   "writeInt",
+        "writeFloat",  "writeStringHeader", "writeString", "writeBinaryHeader",
+        "writeBinary", "writeArrayHeader",  "writeArray",  "writeMapHeader",
+        "writeMap",    "writeStruct",       "writeUnion",  "writeEnum",
+        "write",
+    });
+
+    var buffer: [256]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    const p = packer(&writer);
+
+    try p.writeNull();
+    try p.writeBool(true);
+    try p.writeInt(@as(u32, 1));
+    try p.writeFloat(@as(f64, 1.5));
+    try p.writeStringHeader(3);
+    try p.writeString("abc");
+    try p.writeBinaryHeader(3);
+    try p.writeBinary("abc");
+    try p.writeArrayHeader(1);
+    try p.writeArray(u32, &[_]u32{1});
+    try p.writeMapHeader(1);
+    try p.writeStruct(SmokeStruct{ .a = 1 });
+    try p.writeUnion(SmokeUnion{ .a = 1 });
+    try p.writeEnum(SmokeEnum.a);
+    try p.write(@as(u8, 1));
+
+    var map: std.AutoHashMap(u8, u8) = .init(std.testing.allocator);
+    defer map.deinit();
+    try map.put(1, 2);
+    try p.writeMap(map);
+
+    try std.testing.expect(writer.buffered().len > 0);
+}
+
+test "smoke: every Unpacker method is instantiated and called" {
+    assertCovered(Unpacker, &.{
+        "init",             "readNull",         "readBool",       "readInt",
+        "readFloat",        "readStringHeader", "readString",     "readStringInto",
+        "readBinaryHeader", "readBinary",       "readBinaryInto", "readArray",
+        "readArrayInto",    "readMapHeader",    "readMap",        "readMapInto",
+        "readStruct",       "readUnion",        "readEnum",       "read",
+    });
+
+    const alloc = std.testing.allocator;
+
+    // Each method gets its own reader holding exactly the bytes it expects, so
+    // a failure points at one method rather than a shared cursor.
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{0xc0});
+        try unpacker(&r, alloc).readNull();
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{0xc3});
+        try std.testing.expectEqual(true, try unpacker(&r, alloc).readBool(bool));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{0x2a});
+        try std.testing.expectEqual(@as(u32, 42), try unpacker(&r, alloc).readInt(u32));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0xcb, 0x3f, 0xf8, 0, 0, 0, 0, 0, 0 });
+        try std.testing.expectEqual(@as(f64, 1.5), try unpacker(&r, alloc).readFloat(f64));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0xa3, 'a', 'b', 'c' });
+        try std.testing.expectEqual(@as(u32, 3), try unpacker(&r, alloc).readStringHeader(u32));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0xa3, 'a', 'b', 'c' });
+        const s = try unpacker(&r, alloc).readString();
+        defer alloc.free(s);
+        try std.testing.expectEqualStrings("abc", s);
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0xa3, 'a', 'b', 'c' });
+        var buf: [8]u8 = undefined;
+        try std.testing.expectEqualStrings("abc", try unpacker(&r, alloc).readStringInto(&buf));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0xc4, 0x03, 'a', 'b', 'c' });
+        try std.testing.expectEqual(@as(u32, 3), try unpacker(&r, alloc).readBinaryHeader(u32));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0xc4, 0x03, 'a', 'b', 'c' });
+        const b = try unpacker(&r, alloc).readBinary();
+        defer alloc.free(b);
+        try std.testing.expectEqualSlices(u8, "abc", b);
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0xc4, 0x03, 'a', 'b', 'c' });
+        var buf: [8]u8 = undefined;
+        try std.testing.expectEqualSlices(u8, "abc", try unpacker(&r, alloc).readBinaryInto(&buf));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0x93, 0x01, 0x02, 0x03 });
+        const a = try unpacker(&r, alloc).readArray(u32);
+        defer alloc.free(a);
+        try std.testing.expectEqualSlices(u32, &[_]u32{ 1, 2, 3 }, a);
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0x93, 0x01, 0x02, 0x03 });
+        var buf: [8]u32 = undefined;
+        const a = try unpacker(&r, alloc).readArrayInto(u32, &buf);
+        try std.testing.expectEqualSlices(u32, &[_]u32{ 1, 2, 3 }, a);
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{0x81});
+        try std.testing.expectEqual(@as(u32, 1), try unpacker(&r, alloc).readMapHeader(u32));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0x81, 0x01, 0x02 });
+        var m = try unpacker(&r, alloc).readMap(std.AutoHashMap(u8, u8));
+        defer m.deinit();
+        try std.testing.expectEqual(@as(?u8, 2), m.get(1));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0x81, 0x01, 0x02 });
+        var m: std.AutoHashMap(u8, u8) = .init(alloc);
+        defer m.deinit();
+        try unpacker(&r, alloc).readMapInto(&m);
+        try std.testing.expectEqual(@as(?u8, 2), m.get(1));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0x81, 0xa1, 'a', 0x07 });
+        try std.testing.expectEqual(SmokeStruct{ .a = 7 }, try unpacker(&r, alloc).readStruct(SmokeStruct));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{ 0x81, 0xa1, 'a', 0x07 });
+        try std.testing.expectEqual(SmokeUnion{ .a = 7 }, try unpacker(&r, alloc).readUnion(SmokeUnion));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{0x01});
+        try std.testing.expectEqual(SmokeEnum.a, try unpacker(&r, alloc).readEnum(SmokeEnum));
+    }
+    {
+        var r = std.Io.Reader.fixed(&[_]u8{0x2a});
+        try std.testing.expectEqual(@as(u8, 42), try unpacker(&r, alloc).read(u8));
+    }
+}
