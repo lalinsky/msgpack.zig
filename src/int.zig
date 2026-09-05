@@ -47,7 +47,7 @@ pub fn getIntSize(comptime T: type, value: T) usize {
         if (bits == 64 or value >= std.math.minInt(i64) and value <= std.math.maxInt(i64)) {
             return 1 + @sizeOf(i64);
         }
-        @compileError("Unsupported signed int with " ++ type_info.int.bits ++ "bits");
+        @compileError(std.fmt.comptimePrint("Unsupported signed int with {d} bits", .{type_info.int.bits}));
     } else {
         if (value <= 127) {
             return 1;
@@ -64,7 +64,7 @@ pub fn getIntSize(comptime T: type, value: T) usize {
         if (bits == 64 or value <= std.math.maxInt(u64)) {
             return 1 + @sizeOf(u64);
         }
-        @compileError("Unsupported integer size of " ++ bits ++ "bits");
+        @compileError(std.fmt.comptimePrint("Unsupported unsigned int with {d} bits", .{bits}));
     }
 }
 
@@ -96,7 +96,7 @@ pub fn packInt(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T)
         if (bits == 64 or value >= std.math.minInt(i64) and value <= std.math.maxInt(i64)) {
             return packFixedSizeInt(writer, i64, @intCast(value));
         }
-        @compileError("Unsupported signed int with " ++ type_info.int.bits ++ "bits");
+        @compileError(std.fmt.comptimePrint("Unsupported signed int with {d} bits", .{type_info.int.bits}));
     } else {
         if (value <= 127) {
             return writer.writeByte(@bitCast(@as(u8, @intCast(value))));
@@ -113,7 +113,7 @@ pub fn packInt(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T)
         if (bits == 64 or value <= std.math.maxInt(u64)) {
             return packFixedSizeInt(writer, u64, @intCast(value));
         }
-        @compileError("Unsupported integer size of " ++ bits ++ "bits");
+        @compileError(std.fmt.comptimePrint("Unsupported unsigned int with {d} bits", .{bits}));
     }
 }
 
@@ -130,7 +130,7 @@ inline fn resolveFixedSizeIntHeader(comptime T: type) u8 {
                 16 => return hdrs.INT16,
                 32 => return hdrs.INT32,
                 64 => return hdrs.INT64,
-                else => @compileError("Unsupported signed int with " ++ type_info.int.bits ++ "bits"),
+                else => @compileError(std.fmt.comptimePrint("Unsupported signed int with {d} bits", .{type_info.int.bits})),
             }
         },
         .unsigned => {
@@ -139,7 +139,7 @@ inline fn resolveFixedSizeIntHeader(comptime T: type) u8 {
                 16 => return hdrs.UINT16,
                 32 => return hdrs.UINT32,
                 64 => return hdrs.UINT64,
-                else => @compileError("Unsupported unsigned int with " ++ type_info.int.bits ++ "bits"),
+                else => @compileError(std.fmt.comptimePrint("Unsupported unsigned int with {d} bits", .{type_info.int.bits})),
             }
         },
     }
