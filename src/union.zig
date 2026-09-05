@@ -35,8 +35,6 @@ pub const UnionAsMapOptions = struct {
         field_name_prefix: u8,
         field_index,
     },
-    omit_nulls: bool = true,
-    omit_defaults: bool = false,
 };
 
 pub const UnionAsTaggedOptions = struct {
