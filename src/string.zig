@@ -91,14 +91,24 @@ pub fn packStringLiteral(writer: *std.Io.Writer, comptime value: []const u8) !vo
     try writer.writeAll(&bytes);
 }
 
-pub fn unpackString(reader: *std.Io.Reader, allocator: std.mem.Allocator) ![]u8 {
-    const len = try unpackStringHeader(reader, u32);
+/// Like `unpackString`, but `T` may be optional, in which case a nil header
+/// decodes to null. Lets a caller hand an optional type straight down instead
+/// of testing for nil itself, the way the other `unpack*` entry points do.
+pub fn unpackStringValue(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
+    const len = if (isOptional(T))
+        try unpackStringHeader(reader, ?u32) orelse return null
+    else
+        try unpackStringHeader(reader, u32);
 
     const data = try allocator.alloc(u8, len);
     errdefer allocator.free(data);
 
     try reader.readSliceAll(data);
     return data;
+}
+
+pub fn unpackString(reader: *std.Io.Reader, allocator: std.mem.Allocator) ![]u8 {
+    return unpackStringValue(reader, allocator, []u8);
 }
 
 /// Unpacks a string without copying it, borrowing the reader's buffer. The
