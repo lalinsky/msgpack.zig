@@ -293,12 +293,7 @@ const TrickleReader = struct {
         return .{
             .data = data,
             .reader = .{
-                .vtable = &.{
-                    .stream = stream,
-                    .discard = discard,
-                    .readVec = readVec,
-                    .rebase = std.Io.Reader.defaultRebase,
-                },
+                .vtable = &.{ .stream = stream },
                 .buffer = buffer,
                 .seek = 0,
                 .end = 0,
@@ -306,23 +301,19 @@ const TrickleReader = struct {
         };
     }
 
-    fn readVec(r: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
-        _ = data;
+    /// Hands over a single byte per call. `stream` is the only operation a
+    /// `std.Io.Reader` must provide; `readVec`, `discard` and `rebase` all
+    /// default to implementations derived from it, so leaving them alone is
+    /// what makes this reader behave correctly everywhere rather than only in
+    /// the situations it was tried in.
+    fn stream(r: *std.Io.Reader, w: *std.Io.Writer, limit: std.Io.Limit) std.Io.Reader.StreamError!usize {
         const self: *TrickleReader = @fieldParentPtr("reader", r);
         if (self.pos >= self.data.len) return error.EndOfStream;
-        if (r.end >= r.buffer.len) return 0;
-        r.buffer[r.end] = self.data[self.pos];
-        r.end += 1;
+        if (!limit.nonzero()) return 0;
+
+        try w.writeByte(self.data[self.pos]);
         self.pos += 1;
         return 1;
-    }
-
-    fn stream(_: *std.Io.Reader, _: *std.Io.Writer, _: std.Io.Limit) std.Io.Reader.StreamError!usize {
-        return error.EndOfStream;
-    }
-
-    fn discard(_: *std.Io.Reader, _: std.Io.Limit) std.Io.Reader.Error!usize {
-        return error.EndOfStream;
     }
 };
 
@@ -392,6 +383,45 @@ test "decode a key too long for the reader buffer errors, never panics" {
         const decoded = try decodeLeaky(LongKey, std.testing.allocator, &trickle.reader);
         try std.testing.expectEqualDeep(value, decoded);
     }
+}
+
+test "decode a string value larger than the reader buffer" {
+    // String *values* are copied out rather than borrowed, so unlike map keys
+    // they have no size limit relative to the reader's buffer. This drives
+    // `readSliceShort`, which hands the reader the caller's destination rather
+    // than asking it to buffer.
+    const Msg = struct { s: []const u8 };
+    const long = "a" ** 200;
+    const value = Msg{ .s = long };
+
+    var encoded: [256]u8 = undefined;
+    const bytes = try encodeToBuffer(value, &encoded);
+
+    for ([_]usize{ 16, 33, 64 }) |buffer_len| {
+        var buffer: [64]u8 = undefined;
+        var trickle = TrickleReader.init(buffer[0..buffer_len], bytes);
+        const decoded = try decodeLeaky(Msg, std.testing.allocator, &trickle.reader);
+        defer std.testing.allocator.free(decoded.s);
+        try std.testing.expectEqualStrings(long, decoded.s);
+    }
+}
+
+test "skip a value larger than the reader buffer" {
+    // Exercises the reader's `discard`, which now comes from the std default
+    // built on `stream`. With `discard` stubbed out this returned
+    // `error.EndOfStream` even though the bytes were available.
+    var encoded: [512]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&encoded);
+    try packString(&writer, "a" ** 200);
+    try packInt(&writer, u8, 42);
+    const bytes = writer.buffered();
+
+    var buffer: [16]u8 = undefined;
+    var trickle = TrickleReader.init(&buffer, bytes);
+
+    try skipAny(&trickle.reader);
+    // The skip must land exactly on the next value, not past it or short of it.
+    try std.testing.expectEqual(@as(u8, 42), try unpackInt(&trickle.reader, u8));
 }
 
 test "encode/decode" {
