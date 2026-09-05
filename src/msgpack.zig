@@ -306,15 +306,30 @@ const TrickleReader = struct {
         };
     }
 
+    /// Yields one byte per call, to whichever destination the caller asked for.
+    ///
+    /// The two drivers in `std.Io.Reader` want different things. `fillUnbuffered`
+    /// passes an empty `data[0]` and expects the reader's own buffer to grow,
+    /// ignoring the return value. `readSliceShort` passes the caller's remaining
+    /// destination and advances by the returned count, so a byte written
+    /// anywhere else is both lost and miscounted -- and once the reader's buffer
+    /// fills, returning 0 with no progress makes its loop spin forever.
     fn readVec(r: *std.Io.Reader, data: [][]u8) std.Io.Reader.Error!usize {
-        _ = data;
         const self: *TrickleReader = @fieldParentPtr("reader", r);
         if (self.pos >= self.data.len) return error.EndOfStream;
-        if (r.end >= r.buffer.len) return 0;
+
+        if (data.len > 0 and data[0].len > 0) {
+            data[0][0] = self.data[self.pos];
+            self.pos += 1;
+            return 1;
+        }
+
+        // `rebase` has already made room for what the caller asked to buffer.
+        std.debug.assert(r.end < r.buffer.len);
         r.buffer[r.end] = self.data[self.pos];
         r.end += 1;
         self.pos += 1;
-        return 1;
+        return 0;
     }
 
     fn stream(_: *std.Io.Reader, _: *std.Io.Writer, _: std.Io.Limit) std.Io.Reader.StreamError!usize {
@@ -391,6 +406,27 @@ test "decode a key too long for the reader buffer errors, never panics" {
         var trickle = TrickleReader.init(&buffer, bytes);
         const decoded = try decodeLeaky(LongKey, std.testing.allocator, &trickle.reader);
         try std.testing.expectEqualDeep(value, decoded);
+    }
+}
+
+test "decode a string value larger than the reader buffer" {
+    // String *values* are copied out rather than borrowed, so unlike map keys
+    // they have no size limit relative to the reader's buffer. This drives
+    // `readSliceShort`, which hands the reader the caller's destination rather
+    // than asking it to buffer.
+    const Msg = struct { s: []const u8 };
+    const long = "a" ** 200;
+    const value = Msg{ .s = long };
+
+    var encoded: [256]u8 = undefined;
+    const bytes = try encodeToBuffer(value, &encoded);
+
+    for ([_]usize{ 16, 33, 64 }) |buffer_len| {
+        var buffer: [64]u8 = undefined;
+        var trickle = TrickleReader.init(buffer[0..buffer_len], bytes);
+        const decoded = try decodeLeaky(Msg, std.testing.allocator, &trickle.reader);
+        defer std.testing.allocator.free(decoded.s);
+        try std.testing.expectEqualStrings(long, decoded.s);
     }
 }
 
