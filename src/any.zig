@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const NonOptional = @import("utils.zig").NonOptional;
+
 const packNull = @import("null.zig").packNull;
 const unpackNull = @import("null.zig").unpackNull;
 
@@ -13,7 +15,7 @@ const packFloat = @import("float.zig").packFloat;
 const unpackFloat = @import("float.zig").unpackFloat;
 
 const packString = @import("string.zig").packString;
-const unpackString = @import("string.zig").unpackString;
+const unpackStringValue = @import("string.zig").unpackStringValue;
 const String = @import("string.zig").String;
 const Binary = @import("binary.zig").Binary;
 
@@ -94,8 +96,13 @@ pub fn packAny(writer: *std.Io.Writer, value: anytype) !void {
     @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
 }
 
+/// Every `unpack*` below accepts an optional type and decodes a nil header to
+/// null as one more case of the header switch it already performs. So dispatch
+/// on the shape underneath the optional and pass `T` through untouched, rather
+/// than testing for nil here and stripping it — that would read the header
+/// twice and leave each leaf's own nil handling unused.
 pub fn unpackAny(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
-    switch (@typeInfo(T)) {
+    switch (@typeInfo(NonOptional(T))) {
         .void => return unpackNull(reader),
         .bool => return unpackBool(reader, T),
         .int => return unpackInt(reader, T),
@@ -106,17 +113,11 @@ pub fn unpackAny(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime 
         .pointer => |ptr_info| {
             if (ptr_info.size == .slice) {
                 if (isString(T)) {
-                    return unpackString(reader, allocator);
+                    return unpackStringValue(reader, allocator, T);
                 } else {
                     return unpackArray(reader, allocator, T);
                 }
             }
-        },
-        .optional => |opt_info| {
-            unpackNull(reader) catch {
-                return try unpackAny(reader, allocator, opt_info.child);
-            };
-            return null;
         },
         else => {},
     }
@@ -346,4 +347,36 @@ test "packAny/unpackAny: Binary struct" {
     const result = try unpackAny(&reader, std.testing.allocator, Binary);
     defer std.testing.allocator.free(result.data);
     try std.testing.expectEqualSlices(u8, "\x01\x02\x03\x04", result.data);
+}
+
+test "unpackAny: optional dispatches to the leaf without disturbing the stream" {
+    // The optional is handed to the leaf unpacker intact, so a present value
+    // must consume exactly its own bytes and leave the next value readable.
+    const buffer = [_]u8{ 0x2a, 0xc3 }; // 42, then true
+    var reader = std.Io.Reader.fixed(&buffer);
+    try std.testing.expectEqual(@as(?u8, 42), try unpackAny(&reader, std.testing.allocator, ?u8));
+    try std.testing.expectEqual(true, try unpackAny(&reader, std.testing.allocator, bool));
+}
+
+test "unpackAny: optional string reads nil as null" {
+    const packed_nil = [_]u8{0xc0};
+    var reader = std.Io.Reader.fixed(&packed_nil);
+    const value = try unpackAny(&reader, std.testing.allocator, ?[]const u8);
+    try std.testing.expectEqual(@as(?[]const u8, null), value);
+}
+
+test "unpackAny: optional string reads a value" {
+    const packed_abc = [_]u8{ 0xa3, 'a', 'b', 'c' };
+    var reader = std.Io.Reader.fixed(&packed_abc);
+    const value = try unpackAny(&reader, std.testing.allocator, ?[]const u8);
+    defer if (value) |v| std.testing.allocator.free(v);
+    try std.testing.expectEqualStrings("abc", value.?);
+}
+
+test "unpackAny: a non-optional receiving nil still errors" {
+    const packed_nil = [_]u8{0xc0};
+    inline for (.{ u32, bool, f64 }) |T| {
+        var reader = std.Io.Reader.fixed(&packed_nil);
+        try std.testing.expectError(error.Null, unpackAny(&reader, std.testing.allocator, T));
+    }
 }

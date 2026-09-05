@@ -9,6 +9,7 @@ const NoAllocator = @import("utils.zig").NoAllocator;
 
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
+const unpackNullIfPresent = @import("null.zig").unpackNullIfPresent;
 
 const packMapHeader = @import("map.zig").packMapHeader;
 const unpackMapHeader = @import("map.zig").unpackMapHeader;
@@ -290,6 +291,10 @@ pub fn unpackStruct(reader: *std.Io.Reader, allocator: std.mem.Allocator, compti
 
     const has_custom_read_fn = std.meta.hasFn(Type, "msgpackRead");
     if (has_custom_read_fn) {
+        // A custom reader decides its own encoding, so it cannot be asked to
+        // recognise a nil. The formats below carry optionality in their own
+        // header, but here the check has to happen before handing over.
+        if (isOptional(T) and try unpackNullIfPresent(reader)) return null;
         return try Type.msgpackRead(unpacker(reader, allocator));
     } else {
         const format = comptime if (std.meta.hasFn(Type, "msgpackFormat")) Type.msgpackFormat() else default_struct_format;
@@ -388,6 +393,43 @@ test "readStruct: optional custom reader" {
     const decoded = try unpackStruct(&reader, std.testing.allocator, ?Msg);
 
     try std.testing.expectEqual(@as(?Msg, Msg{ .a = 42 }), decoded);
+}
+
+test "readStruct: optional custom reader accepts nil" {
+    // A custom reader defines its own encoding and cannot be asked to
+    // recognise a nil, so the optional has to be resolved before it is called.
+    const Msg = struct {
+        a: u32,
+
+        pub fn msgpackRead(unpacker_value: anytype) !@This() {
+            return .{ .a = try unpacker_value.readInt(u32) };
+        }
+    };
+
+    const packed_nil = [_]u8{0xc0};
+    var reader = std.Io.Reader.fixed(&packed_nil);
+    try std.testing.expectEqual(
+        @as(?Msg, null),
+        try unpackStruct(&reader, std.testing.allocator, ?Msg),
+    );
+    try std.testing.expectEqual(0, reader.bufferedLen());
+}
+
+test "readStruct: non-optional custom reader still rejects nil" {
+    const Msg = struct {
+        a: u32,
+
+        pub fn msgpackRead(unpacker_value: anytype) !@This() {
+            return .{ .a = try unpacker_value.readInt(u32) };
+        }
+    };
+
+    const packed_nil = [_]u8{0xc0};
+    var reader = std.Io.Reader.fixed(&packed_nil);
+    try std.testing.expectError(
+        error.Null,
+        unpackStruct(&reader, std.testing.allocator, Msg),
+    );
 }
 
 test "writeStruct: map by field_name" {

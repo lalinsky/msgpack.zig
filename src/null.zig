@@ -12,13 +12,18 @@ pub fn packNull(writer: *std.Io.Writer) !void {
     try writer.writeByte(hdrs.NIL);
 }
 
-pub fn unpackNull(reader: *std.Io.Reader) !void {
-    const header = try reader.peekByte();
-    if (header == hdrs.NIL) {
+/// Consumes a nil header if the next value is one, reporting whether it did and
+/// leaving the reader untouched otherwise.
+pub fn unpackNullIfPresent(reader: *std.Io.Reader) !bool {
+    if (try reader.peekByte() == hdrs.NIL) {
         reader.toss(1);
-        return;
+        return true;
     }
-    return error.InvalidFormat;
+    return false;
+}
+
+pub fn unpackNull(reader: *std.Io.Reader) !void {
+    if (!try unpackNullIfPresent(reader)) return error.InvalidFormat;
 }
 
 pub fn maybePackNull(writer: *std.Io.Writer, comptime T: type, value: T) !?NonOptional(T) {
