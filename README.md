@@ -41,20 +41,35 @@ const Message = struct {
     age: u8,
 };
 
-var buffer = std.ArrayList(u8).init(allocator);
+var buffer: std.Io.Writer.Allocating = .init(allocator);
 defer buffer.deinit();
 
 try msgpack.encode(Message{
     .name = "John",
     .age = 20,
-}, buffer.writer());
+}, &buffer.writer);
 
-const decoded = try msgpack.decodeFromSlice(Message, allocator, buffer.items);
+const decoded = try msgpack.decodeFromSlice(Message, allocator, buffer.written());
 defer decoded.deinit();
 
 std.debug.assert(std.mem.eql(u8, decoded.value.name, "John"));
 std.debug.assert(decoded.value.age == 20);
 ```
+
+`decodeFromSlice` creates an arena of its own for the decoded value, which is what `deinit` frees.
+If you are already decoding into memory you release in one go — a per-request arena, or a fixed
+buffer — use `decodeFromSliceLeaky` instead. It allocates straight from the allocator you give it,
+so there is nothing to deinit, and it avoids a second arena inside your own:
+
+```zig
+var arena = std.heap.ArenaAllocator.init(allocator);
+defer arena.deinit();
+
+const message = try msgpack.decodeFromSliceLeaky(Message, arena.allocator(), buffer.written());
+```
+
+`decodeLeaky` is the same for a reader. In a loop, reuse one arena and `reset(.retain_capacity)`
+between messages; the arena then stops going back to its backing allocator entirely.
 
 The encoded message will use field names as keys to encode the message. In order to generate more compact messages, you can change the format to use field indexes:
 
