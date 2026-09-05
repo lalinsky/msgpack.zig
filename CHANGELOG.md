@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Decoding an optional is about 18% cheaper, by letting each type's own unpacker recognise a nil header instead of testing for one beforehand
+
+### Fixed
+- Decoding an enum whose tag names no field returns `error.InvalidEnumTag` instead of being illegal behavior; non-exhaustive enums still accept unknown tags
+
 ## [0.8.0] - 2026-09-04
 
 ### Added
