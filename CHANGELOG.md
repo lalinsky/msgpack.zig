@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Decoding an optional is about 18% cheaper, by letting each type's own unpacker recognise a nil header instead of testing for one beforehand
 
+### Removed
+- `omit_nulls` and `omit_defaults` on `UnionAsMapOptions`, which were never read; a union-as-map always writes exactly one entry, so there is nothing to omit
+
 ### Fixed
 - Decoding an enum whose tag names no field returns `error.InvalidEnumTag` instead of being illegal behavior; non-exhaustive enums still accept unknown tags
 
