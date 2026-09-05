@@ -46,6 +46,21 @@ pub inline fn takeInt(reader: *std.Io.Reader, comptime T: type) !T {
     return reader.takeInt(T, .big);
 }
 
+/// Copies `dest.len` bytes out of the reader. When they are already buffered,
+/// which is always the case when decoding from a slice, this is a plain memcpy
+/// and skips `readSliceAll`'s short-read loop. Falls back to it otherwise, so a
+/// streaming reader whose buffer cannot hold the value still works.
+pub inline fn readSliceFast(reader: *std.Io.Reader, dest: []u8) !void {
+    const buffered = reader.buffered();
+    if (buffered.len >= dest.len) {
+        @branchHint(.likely);
+        @memcpy(dest, buffered[0..dest.len]);
+        reader.toss(dest.len);
+        return;
+    }
+    return reader.readSliceAll(dest);
+}
+
 /// Compares `value` against a comptime-known `name`. The length test is a
 /// compare against a constant, and the byte compare that follows has a
 /// comptime-known length, so it lowers to inline compares rather than a call.
@@ -93,3 +108,26 @@ pub const NoAllocator = struct {
         };
     }
 };
+
+test "readSliceFast: copies straight out of the buffer when fully buffered" {
+    const data = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
+    var reader = std.Io.Reader.fixed(&data);
+
+    var dest: [5]u8 = undefined;
+    try readSliceFast(&reader, &dest);
+    try std.testing.expectEqualSlices(u8, data[0..5], &dest);
+    // The bytes must be consumed, not just peeked.
+    try std.testing.expectEqualSlices(u8, data[5..], reader.buffered());
+}
+
+test "readSliceFast: falls back when the value is not fully buffered" {
+    const data = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
+    var reader = std.Io.Reader.fixed(&data);
+    // Pretend only half the value has arrived so far.
+    reader.end = 4;
+
+    var dest: [8]u8 = undefined;
+    // A fixed reader cannot refill, so taking the fallback surfaces
+    // EndOfStream. Taking the fast path here would instead read past `end`.
+    try std.testing.expectError(error.EndOfStream, readSliceFast(&reader, &dest));
+}

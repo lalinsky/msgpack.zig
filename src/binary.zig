@@ -9,6 +9,7 @@ const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
 const unpackIntValue = @import("int.zig").unpackIntValue;
+const readSliceFast = @import("utils.zig").readSliceFast;
 const unpackShortIntValue = @import("int.zig").unpackShortIntValue;
 
 pub fn sizeOfPackedBinaryHeader(len: usize) !usize {
@@ -62,7 +63,7 @@ pub fn unpackBinary(reader: *std.Io.Reader, allocator: std.mem.Allocator) ![]u8 
     const data = try allocator.alloc(u8, len);
     errdefer allocator.free(data);
 
-    try reader.readSliceAll(data);
+    try readSliceFast(reader, data);
     return data;
 }
 
@@ -74,7 +75,7 @@ pub fn unpackBinaryInto(reader: *std.Io.Reader, buf: []u8) ![]u8 {
     }
 
     const data = buf[0..len];
-    try reader.readSliceAll(data);
+    try readSliceFast(reader, data);
     return data;
 }
 

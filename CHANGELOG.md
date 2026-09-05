@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Decoding an optional is about 18% cheaper, by letting each type's own unpacker recognise a nil header instead of testing for one beforehand
+- Decoding string and binary values copies straight out of the reader's buffer when the value is already buffered, which is 3-7% cheaper on string-heavy messages
 
 ### Removed
 - `omit_nulls` and `omit_defaults` on `UnionAsMapOptions`, which were never read; a union-as-map always writes exactly one entry, so there is nothing to omit
