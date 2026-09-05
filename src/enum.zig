@@ -59,13 +59,22 @@ pub fn unpackEnum(reader: *std.Io.Reader, comptime T: type) !T {
     // Handle the optional case
     if (@typeInfo(T) == .optional) {
         if (int_value) |value| {
-            return @enumFromInt(value);
+            return try tagFromInt(Type, value);
         } else {
             return null;
         }
     } else {
-        return @enumFromInt(int_value);
+        return tagFromInt(Type, int_value);
     }
+}
+
+/// Converts a tag read off the wire into `T`, rejecting values that name no
+/// field. `@enumFromInt` is illegal behavior for an out-of-range tag on an
+/// exhaustive enum, and the value here comes from the message, so it cannot be
+/// trusted. `std.enums.fromInt` accepts any tag for a non-exhaustive enum,
+/// which is what makes those usable for forward compatibility.
+fn tagFromInt(comptime T: type, value: @typeInfo(T).@"enum".tag_type) !T {
+    return std.enums.fromInt(T, value) orelse error.InvalidEnumTag;
 }
 
 test "getMaxEnumSize" {
@@ -189,4 +198,41 @@ test "getEnumSize with optional" {
     // Test null optional enum size
     const null_value: OptionalEnum = null;
     try std.testing.expectEqual(1, getEnumSize(OptionalEnum, null_value)); // size of null
+}
+
+test "unpackEnum: a tag naming no field is rejected" {
+    const Status = enum(u8) { pending = 1, active = 2 };
+
+    // 3 is a valid u8 but names no field. Before this was checked,
+    // @enumFromInt made it illegal behavior rather than an error.
+    const packed_unknown = [_]u8{0x03};
+    var reader = std.Io.Reader.fixed(&packed_unknown);
+    try std.testing.expectError(error.InvalidEnumTag, unpackEnum(&reader, Status));
+}
+
+test "unpackEnum: optional enum rejects a tag naming no field" {
+    const Status = enum(u8) { pending = 1, active = 2 };
+
+    const packed_unknown = [_]u8{0x03};
+    var reader = std.Io.Reader.fixed(&packed_unknown);
+    try std.testing.expectError(error.InvalidEnumTag, unpackEnum(&reader, ?Status));
+}
+
+test "unpackEnum: a non-exhaustive enum accepts an unknown tag" {
+    // The point of a non-exhaustive enum is to survive tags added later, so
+    // an unrecognised value has to round trip rather than error.
+    const Status = enum(u8) { pending = 1, active = 2, _ };
+
+    const packed_unknown = [_]u8{0x63};
+    var reader = std.Io.Reader.fixed(&packed_unknown);
+    const value = try unpackEnum(&reader, Status);
+    try std.testing.expectEqual(@as(u8, 99), @intFromEnum(value));
+}
+
+test "unpackEnum: valid tags still decode" {
+    const Status = enum(u8) { pending = 1, active = 2 };
+
+    const packed_active = [_]u8{0x02};
+    var reader = std.Io.Reader.fixed(&packed_active);
+    try std.testing.expectEqual(Status.active, try unpackEnum(&reader, Status));
 }
