@@ -248,7 +248,40 @@ pub fn encode(value: anytype, writer: *std.Io.Writer) !void {
 
 pub const Decoded = std.json.Parsed;
 
-pub fn decode(comptime T: type, allocator: Allocator, reader: *std.Io.Reader) !Decoded(T) {
+/// What decoding a message from a slice can fail with.
+pub const SliceDecodeError = error{
+    /// The message was not all there: the input ended before it did, or
+    /// before it began.
+    EndOfStream,
+    /// Bytes that are not MessagePack, or not the kind of value the
+    /// destination type expects.
+    InvalidFormat,
+    /// A number that does not fit the destination type.
+    IntegerOverflow,
+    /// A nil where the destination type is not optional.
+    Null,
+    InvalidEnumTag,
+    UnknownStructField,
+    MissingStructFields,
+    UnknownUnionField,
+    InvalidUnionFieldCount,
+    InvalidTaggedUnionFieldCount,
+    InvalidTagField,
+    /// An `.as_tagged` union variant that is neither `void` nor a struct.
+    TaggedUnionUnsupportedFieldType,
+    OutOfMemory,
+};
+
+/// What decoding a message from a reader can fail with: everything decoding
+/// from a slice can, and the reader's own failures.
+pub const DecodeError = SliceDecodeError || error{
+    /// The reader failed, and its own error says why.
+    ReadFailed,
+    /// A value had to be buffered whole, and the reader's buffer is smaller.
+    ReaderBufferTooSmall,
+};
+
+pub fn decode(comptime T: type, allocator: Allocator, reader: *std.Io.Reader) DecodeError!Decoded(T) {
     var parsed = Decoded(T){
         .arena = try allocator.create(ArenaAllocator),
         .value = undefined,
@@ -262,18 +295,28 @@ pub fn decode(comptime T: type, allocator: Allocator, reader: *std.Io.Reader) !D
     return parsed;
 }
 
-pub fn decodeLeaky(comptime T: type, allocator: ?Allocator, reader: *std.Io.Reader) !T {
+pub fn decodeLeaky(comptime T: type, allocator: ?Allocator, reader: *std.Io.Reader) DecodeError!T {
     return try unpacker(reader, allocator).read(T);
 }
 
-pub fn decodeFromSlice(comptime T: type, allocator: Allocator, data: []const u8) !Decoded(T) {
+pub fn decodeFromSlice(comptime T: type, allocator: Allocator, data: []const u8) SliceDecodeError!Decoded(T) {
     var reader = std.Io.Reader.fixed(data);
-    return try decode(T, allocator, &reader);
+    return decode(T, allocator, &reader) catch |err| return sliceError(err);
 }
 
-pub fn decodeFromSliceLeaky(comptime T: type, allocator: ?Allocator, data: []const u8) !T {
+pub fn decodeFromSliceLeaky(comptime T: type, allocator: ?Allocator, data: []const u8) SliceDecodeError!T {
     var reader = std.Io.Reader.fixed(data);
-    return try decodeLeaky(T, allocator, &reader);
+    return decodeLeaky(T, allocator, &reader) catch |err| return sliceError(err);
+}
+
+/// A reader over a slice cannot fail, and its buffer is the whole slice, so
+/// a value too big for the buffer is a slice that ends before the value does.
+fn sliceError(err: DecodeError) SliceDecodeError {
+    return switch (err) {
+        error.ReadFailed => unreachable,
+        error.ReaderBufferTooSmall => error.EndOfStream,
+        else => |e| e,
+    };
 }
 
 test {
@@ -321,6 +364,58 @@ fn encodeToBuffer(value: anytype, buffer: []u8) ![]const u8 {
     var writer = std.Io.Writer.fixed(buffer);
     try encode(value, &writer);
     return writer.buffered();
+}
+
+test "a slice that ends before its message is EndOfStream" {
+    const Message = struct { id: u64, name: []const u8 };
+    var buffer: [64]u8 = undefined;
+    const encoded = try encodeToBuffer(Message{ .id = 0x1_0000_0000, .name = "hello" }, &buffer);
+
+    try std.testing.expectError(error.EndOfStream, decodeFromSliceLeaky(Message, std.testing.allocator, ""));
+    // Cut inside the name, and inside the id.
+    for ([_]usize{ encoded.len - 2, 8 }) |len| {
+        try std.testing.expectError(error.EndOfStream, decodeFromSliceLeaky(Message, std.testing.allocator, encoded[0..len]));
+        try std.testing.expectError(error.EndOfStream, decodeFromSlice(Message, std.testing.allocator, encoded[0..len]));
+    }
+    var int_buffer: [16]u8 = undefined;
+    // A slice shorter than the integer it is cut inside used to be reported
+    // as the reader's buffer being too small, when the buffer of a slice is
+    // the whole slice.
+    const int = try encodeToBuffer(@as(u64, 0x1_0000_0000), &int_buffer);
+    try std.testing.expectError(error.EndOfStream, decodeFromSliceLeaky(u64, null, int[0..5]));
+}
+
+test "a reader that fails is ReadFailed, not a malformed message" {
+    var buffer: [16]u8 = undefined;
+    var reader: std.Io.Reader = .{ .vtable = std.Io.Reader.failing.vtable, .buffer = &buffer, .seek = 0, .end = 0 };
+    try std.testing.expectError(error.ReadFailed, decodeLeaky(u32, null, &reader));
+}
+
+test "reading a sequence of messages: a clean end, and a message cut short" {
+    const Message = struct { a: u8 };
+    // Two whole messages, then the first two bytes of a third.
+    const stream = "\x81\xa1a\x01\x81\xa1a\x02\x81\xa1";
+
+    for ([_][]const u8{ stream[0..8], stream }) |data| {
+        var reader = std.Io.Reader.fixed(data);
+        var count: usize = 0;
+        const result: anyerror!void = while (true) {
+            // Nothing left before a message begins: the sequence is over.
+            _ = reader.peekByte() catch |err| switch (err) {
+                error.EndOfStream => break {},
+                else => |e| break e,
+            };
+            // From here a message has begun, and has to be all there.
+            _ = decodeLeaky(Message, null, &reader) catch |err| break err;
+            count += 1;
+        };
+        try std.testing.expectEqual(2, count);
+        if (data.len == 8) {
+            try result;
+        } else {
+            try std.testing.expectError(error.EndOfStream, result);
+        }
+    }
 }
 
 test "decode from a streaming reader whose buffer holds the largest value" {
