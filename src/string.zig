@@ -10,6 +10,7 @@ const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
 const reserveArray = @import("utils.zig").reserveArray;
 const readSliceFast = @import("utils.zig").readSliceFast;
+const readSliceAlloc = @import("utils.zig").readSliceAlloc;
 const unpackIntValue = @import("int.zig").unpackIntValue;
 const unpackShortIntValue = @import("int.zig").unpackShortIntValue;
 
@@ -101,11 +102,7 @@ pub fn unpackStringValue(reader: *std.Io.Reader, allocator: std.mem.Allocator, c
     else
         try unpackStringHeader(reader, u32);
 
-    const data = try allocator.alloc(u8, len);
-    errdefer allocator.free(data);
-
-    try readSliceFast(reader, data);
-    return data;
+    return try readSliceAlloc(reader, allocator, len);
 }
 
 pub fn unpackString(reader: *std.Io.Reader, allocator: std.mem.Allocator) ![]u8 {

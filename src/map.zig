@@ -83,17 +83,24 @@ pub fn unpackMapInto(reader: *std.Io.Reader, allocator: std.mem.Allocator, map: 
     const T = std.meta.Child(@TypeOf(map));
     const len = try unpackMapHeader(reader, T.Size);
 
+    // Every entry takes at least two bytes, so a count beyond what the reader
+    // has buffered is only reserved as the entries arrive.
+    const capacity: T.Size = @intCast(@min(len, reader.bufferedLen() / 2));
     if (@hasField(T, "unmanaged")) {
-        try map.ensureTotalCapacity(len);
+        try map.ensureTotalCapacity(capacity);
     } else {
-        try map.ensureTotalCapacity(allocator, len);
+        try map.ensureTotalCapacity(allocator, capacity);
     }
 
     for (0..len) |_| {
         var kv: T.KV = undefined;
         kv.key = try unpackAny(reader, allocator, @TypeOf(kv.key));
         kv.value = try unpackAny(reader, allocator, @TypeOf(kv.value));
-        map.putAssumeCapacity(kv.key, kv.value);
+        if (@hasField(T, "unmanaged")) {
+            try map.put(kv.key, kv.value);
+        } else {
+            try map.put(allocator, kv.key, kv.value);
+        }
     }
 }
 

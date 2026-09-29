@@ -61,6 +61,32 @@ pub inline fn readSliceFast(reader: *std.Io.Reader, dest: []u8) !void {
     return reader.readSliceAll(dest);
 }
 
+/// Reads `len` bytes into memory from `allocator`. The length comes from the
+/// message, so memory is only taken up front for bytes the reader already
+/// has; the rest grows as it arrives.
+pub fn readSliceAlloc(reader: *std.Io.Reader, allocator: mem.Allocator, len: usize) ![]u8 {
+    const buffered = reader.buffered();
+    if (buffered.len >= len) {
+        @branchHint(.likely);
+        const data = try allocator.alloc(u8, len);
+        @memcpy(data, buffered[0..len]);
+        reader.toss(len);
+        return data;
+    }
+
+    var list: std.ArrayList(u8) = .empty;
+    errdefer list.deinit(allocator);
+    while (list.items.len < len) {
+        const remaining = len - list.items.len;
+        try list.ensureUnusedCapacity(allocator, @min(remaining, @max(list.items.len, buffered.len, 4096)));
+        const dest = list.unusedCapacitySlice();
+        const n = @min(remaining, dest.len);
+        try reader.readSliceAll(dest[0..n]);
+        list.items.len += n;
+    }
+    return list.toOwnedSlice(allocator);
+}
+
 /// Compares `value` against a comptime-known `name`. The length test is a
 /// compare against a constant, and the byte compare that follows has a
 /// comptime-known length, so it lowers to inline compares rather than a call.

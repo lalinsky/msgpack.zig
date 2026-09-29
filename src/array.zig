@@ -72,14 +72,23 @@ pub fn unpackArray(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptim
 
     const Item = std.meta.Child(NonOptional(T));
 
-    const data = try allocator.alloc(Item, len);
+    // Every item takes at least one byte, so a count beyond what the reader
+    // has buffered is only reserved as the items arrive.
+    var data = try allocator.alloc(Item, @min(len, reader.bufferedLen()));
     errdefer allocator.free(data);
 
-    for (0..len) |i| {
-        data[i] = try unpackAny(reader, allocator, Item);
+    var i: usize = 0;
+    while (true) {
+        while (i < data.len) : (i += 1) {
+            data[i] = try unpackAny(reader, allocator, Item);
+        }
+        if (i == len) return data;
+        data = try growArray(allocator, Item, data, len);
     }
+}
 
-    return data;
+noinline fn growArray(allocator: std.mem.Allocator, comptime Item: type, data: []Item, len: usize) ![]Item {
+    return allocator.realloc(data, @min(len, @max(data.len * 2, 64)));
 }
 
 pub fn unpackArrayInto(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime Item: type, buffer: []Item) ![]Item {
