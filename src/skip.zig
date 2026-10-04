@@ -116,7 +116,7 @@ test "skipAny: extension types" {
         &[_]u8{ 0xd5, 0x01, 0xff, 0xff }, // fixext2
         &[_]u8{ 0xd6, 0x01, 1, 2, 3, 4 }, // fixext4
         &[_]u8{ 0xd7, 0x01, 1, 2, 3, 4, 5, 6, 7, 8 }, // fixext8
-        &[_]u8{ 0xd8, 0x01 } ++ &[_]u8{0xab} ** 16, // fixext16
+        &[_]u8{ 0xd8, 0x01 } ++ &@as([16]u8, @splat(0xab)), // fixext16
         &[_]u8{ 0xc7, 0x03, 0x01, 1, 2, 3 }, // ext8
         &[_]u8{ 0xc8, 0x00, 0x03, 0x01, 1, 2, 3 }, // ext16
         &[_]u8{ 0xc9, 0x00, 0x00, 0x00, 0x03, 0x01, 1, 2, 3 }, // ext32

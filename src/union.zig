@@ -1,4 +1,5 @@
 const std = @import("std");
+const compat = @import("compat.zig");
 const hdrs = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
@@ -66,8 +67,7 @@ fn strPrefix(src: []const u8, len: usize) []const u8 {
 }
 
 pub fn packUnionAsMap(writer: *std.Io.Writer, comptime T: type, value: T, comptime opts: UnionAsMapOptions) !void {
-    const type_info = @typeInfo(T);
-    const fields = type_info.@"union".fields;
+    const fields = comptime compat.unionFields(T);
 
     const TagType = @typeInfo(T).@"union".tag_type.?;
 
@@ -92,8 +92,7 @@ pub fn packUnionAsMap(writer: *std.Io.Writer, comptime T: type, value: T, compti
 }
 
 pub fn packUnionAsTagged(writer: *std.Io.Writer, comptime T: type, value: T, comptime opts: UnionAsTaggedOptions) !void {
-    const type_info = @typeInfo(T);
-    const fields = type_info.@"union".fields;
+    const fields = comptime compat.unionFields(T);
 
     const TagType = @typeInfo(T).@"union".tag_type.?;
 
@@ -102,7 +101,7 @@ pub fn packUnionAsTagged(writer: *std.Io.Writer, comptime T: type, value: T, com
             const field_value = @field(value, field.name);
             const field_type_info = @typeInfo(field.type);
 
-            const field_count = if (field_type_info == .@"struct") field_type_info.@"struct".fields.len else 0;
+            const field_count = if (field_type_info == .@"struct") comptime compat.structFields(field.type).len else 0;
 
             try packMapHeader(writer, field_count + 1);
 
@@ -120,7 +119,7 @@ pub fn packUnionAsTagged(writer: *std.Io.Writer, comptime T: type, value: T, com
             }
 
             if (field_type_info == .@"struct") {
-                inline for (field_type_info.@"struct".fields) |struct_field| {
+                inline for (comptime compat.structFields(field.type)) |struct_field| {
                     try packStringLiteral(writer, struct_field.name);
                     try packAny(writer, @field(field_value, struct_field.name));
                 }
@@ -164,8 +163,7 @@ pub fn unpackUnionAsMap(reader: *std.Io.Reader, allocator: std.mem.Allocator, co
     }
 
     const Type = NonOptional(T);
-    const type_info = @typeInfo(Type);
-    const fields = type_info.@"union".fields;
+    const fields = comptime compat.unionFields(Type);
 
     var result: Type = undefined;
 
@@ -222,8 +220,7 @@ pub fn unpackUnionAsTagged(reader: *std.Io.Reader, allocator: std.mem.Allocator,
     }
 
     const Type = NonOptional(T);
-    const type_info = @typeInfo(Type);
-    const fields = type_info.@"union".fields;
+    const fields = comptime compat.unionFields(Type);
 
     const tag_field_name = try unpackStringBorrowed(reader);
     if (!eqlLiteral(opts.tag_field, tag_field_name)) {

@@ -10,6 +10,8 @@ There are multiple options on how to encode struct fields, in order to generate 
 
 ## Installation
 
+Requires Zig 0.16 or 0.17.
+
 1) Add msgpack.zig as a dependency in your `build.zig.zon`:
 
 ```bash
