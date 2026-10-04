@@ -7,11 +7,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        zig-version: ['0.16.0', '0.17.0']
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: ${{ matrix.zig-version }}
       - run: zig build test --summary all

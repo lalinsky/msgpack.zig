@@ -44,13 +44,13 @@ pub fn packFloat(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: 
         else => unreachable,
     };
 
-    const IntType = std.meta.Int(.unsigned, @bitSizeOf(TargetType));
+    const IntType = @Int(.unsigned, @bitSizeOf(TargetType));
     const int_value = @as(IntType, @bitCast(@as(TargetType, @floatCast(value))));
     return packHeaderAndInt(writer, header, IntType, int_value);
 }
 
 pub fn readFloatValue(reader: *std.Io.Reader, comptime SourceFloat: type, comptime TargetFloat: type) !TargetFloat {
-    const IntType = std.meta.Int(.unsigned, @bitSizeOf(SourceFloat));
+    const IntType = @Int(.unsigned, @bitSizeOf(SourceFloat));
     const int_value = try takeInt(reader, IntType);
 
     return @floatCast(@as(SourceFloat, @bitCast(int_value)));

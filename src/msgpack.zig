@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
+const compat = @import("compat.zig");
 const NoAllocator = @import("utils.zig").NoAllocator;
 
 pub const getNullSize = @import("null.zig").getNullSize;
@@ -391,7 +392,7 @@ test "decode a string value larger than the reader buffer" {
     // `readSliceShort`, which hands the reader the caller's destination rather
     // than asking it to buffer.
     const Msg = struct { s: []const u8 };
-    const long = "a" ** 200;
+    const long = &@as([200]u8, @splat('a'));
     const value = Msg{ .s = long };
 
     var encoded: [256]u8 = undefined;
@@ -412,7 +413,7 @@ test "skip a value larger than the reader buffer" {
     // `error.EndOfStream` even though the bytes were available.
     var encoded: [512]u8 = undefined;
     var writer = std.Io.Writer.fixed(&encoded);
-    try packString(&writer, "a" ** 200);
+    try packString(&writer, &@as([200]u8, @splat('a')));
     try packInt(&writer, u8, 42);
     const bytes = writer.buffered();
 
@@ -584,12 +585,12 @@ test "unpacker readUnion" {
 
 fn assertCovered(comptime T: type, comptime covered: []const []const u8) void {
     comptime {
-        for (@typeInfo(T).@"struct".decls) |decl| {
-            if (@typeInfo(@TypeOf(@field(T, decl.name))) != .@"fn") continue;
+        for (compat.declNames(T)) |decl_name| {
+            if (@typeInfo(@TypeOf(@field(T, decl_name))) != .@"fn") continue;
             for (covered) |name| {
-                if (std.mem.eql(u8, name, decl.name)) break;
+                if (std.mem.eql(u8, name, decl_name)) break;
             } else {
-                @compileError(@typeName(T) ++ "." ++ decl.name ++
+                @compileError(@typeName(T) ++ "." ++ decl_name ++
                     " is not exercised by the smoke test; add a call for it");
             }
         }
