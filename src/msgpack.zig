@@ -407,6 +407,58 @@ test "decode a string value larger than the reader buffer" {
     }
 }
 
+test "a length in a header is not allocated before the input holds it" {
+    // Each header claims 2^32-1 of something, in a 5-byte input. Allocating
+    // that up front fails with OutOfMemory in a 16 KiB buffer.
+    var buffer: [16 * 1024]u8 = undefined;
+    var fba: std.heap.FixedBufferAllocator = .init(&buffer);
+    const allocator = fba.allocator();
+
+    try std.testing.expectError(error.EndOfStream, decodeFromSliceLeaky([]const u8, allocator, "\xdb\xff\xff\xff\xff"));
+    try std.testing.expectError(error.EndOfStream, decodeFromSliceLeaky(@import("binary.zig").Binary, allocator, "\xc6\xff\xff\xff\xff"));
+    try std.testing.expectError(error.EndOfStream, decodeFromSliceLeaky([]u64, allocator, "\xdd\xff\xff\xff\xff"));
+    var reader = std.Io.Reader.fixed("\xdf\xff\xff\xff\xff");
+    try std.testing.expectError(error.EndOfStream, unpacker(&reader, allocator).readMap(std.AutoHashMapUnmanaged(u32, u64)));
+}
+
+test "decode values larger than the reader buffer, a byte at a time" {
+    const Msg = struct {
+        s: []const u8,
+        b: @import("binary.zig").Binary,
+        a: []const u32,
+    };
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const long = "abcdefghij" ** 1000;
+    var items: [300]u32 = undefined;
+    var map: std.AutoHashMapUnmanaged(u32, u32) = .empty;
+    for (&items, 0..) |*item, i| {
+        item.* = @intCast(i * 1000);
+        try map.put(allocator, @intCast(i), @intCast(i * 7));
+    }
+    const value = Msg{ .s = long, .b = .{ .data = long[1..] }, .a = &items };
+
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    try encode(value, &aw.writer);
+    try packMap(&aw.writer, map);
+
+    var buffer: [16]u8 = undefined;
+    var trickle = TrickleReader.init(&buffer, aw.written());
+    const decoded = try decodeLeaky(Msg, allocator, &trickle.reader);
+    try std.testing.expectEqualStrings(long, decoded.s);
+    try std.testing.expectEqualStrings(long[1..], decoded.b.data);
+    try std.testing.expectEqualSlices(u32, &items, decoded.a);
+
+    const decoded_map = try unpacker(&trickle.reader, allocator).readMap(std.AutoHashMapUnmanaged(u32, u32));
+    try std.testing.expectEqual(map.count(), decoded_map.count());
+    var it = map.iterator();
+    while (it.next()) |entry| {
+        try std.testing.expectEqual(entry.value_ptr.*, decoded_map.get(entry.key_ptr.*).?);
+    }
+}
+
 test "skip a value larger than the reader buffer" {
     // Exercises the reader's `discard`, which now comes from the std default
     // built on `stream`. With `discard` stubbed out this returned
