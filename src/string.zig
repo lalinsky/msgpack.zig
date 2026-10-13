@@ -67,7 +67,7 @@ pub fn packString(writer: *std.Io.Writer, value_or_maybe_null: ?[]const u8) !voi
 /// Packs a string whose contents are known at comptime, such as a struct field
 /// name used as a map key. The header and the bytes are one contiguous store of
 /// comptime-known length, so this compiles to immediate stores with no `memcpy`.
-pub fn packStringLiteral(writer: *std.Io.Writer, comptime value: []const u8) !void {
+pub fn packStringLiteral(noalias writer: *std.Io.Writer, comptime value: []const u8) !void {
     const bytes = comptime blk: {
         if (value.len <= hdrs.FIXSTR_MAX - hdrs.FIXSTR_MIN) {
             break :blk [_]u8{hdrs.FIXSTR_MIN + @as(u8, value.len)} ++ value[0..].*;

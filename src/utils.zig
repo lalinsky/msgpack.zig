@@ -24,7 +24,7 @@ test isOptional {
 
 /// Like `Writer.writeByte`, but with the drain moved out of line, which keeps
 /// the function small enough to inline into every caller.
-pub fn writeByte(writer: *std.Io.Writer, byte: u8) !void {
+pub fn writeByte(noalias writer: *std.Io.Writer, byte: u8) !void {
     if (writer.end < writer.buffer.len) {
         @branchHint(.likely);
         writer.buffer[writer.end] = byte;
@@ -38,7 +38,14 @@ pub fn writeByte(writer: *std.Io.Writer, byte: u8) !void {
 /// `Writer.writeAll` otherwise. `Writer.writeAll` loops over `write`, so the
 /// copy goes through an out-of-line `memcpy` even for a few bytes; checking for
 /// room first lets the copy inline.
-pub fn writeAll(writer: *std.Io.Writer, bytes: []const u8) !void {
+///
+/// The writer is `noalias`, here and in the other helpers that store into its
+/// buffer. Without it, the compiler has to assume that a byte stored into the
+/// buffer may have changed the writer's own fields, and reloads `end` and the
+/// buffer after every write, which turns a run of small writes into a chain of
+/// dependent loads and stores. Nothing may change the writer through another
+/// pointer during the call.
+pub fn writeAll(noalias writer: *std.Io.Writer, bytes: []const u8) !void {
     if (writer.end + bytes.len <= writer.buffer.len) {
         @branchHint(.likely);
         @memcpy(writer.buffer[writer.end..][0..bytes.len], bytes);
@@ -92,7 +99,7 @@ pub inline fn eqlLiteral(comptime name: []const u8, value: []const u8) bool {
 /// Writes a header byte followed by a big-endian `T`, as a single contiguous
 /// store when the writer's buffer has room, and as a single `writeAll`
 /// otherwise. Never splits the header from its payload across a drain.
-pub fn packHeaderAndInt(writer: *std.Io.Writer, header: u8, comptime T: type, value: T) !void {
+pub fn packHeaderAndInt(noalias writer: *std.Io.Writer, header: u8, comptime T: type, value: T) !void {
     const len = 1 + @sizeOf(T);
     if (writer.end + len <= writer.buffer.len) {
         @branchHint(.likely);
