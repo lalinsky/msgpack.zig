@@ -1,5 +1,6 @@
 const std = @import("std");
 const hdrs = @import("headers.zig");
+const writeByte = @import("utils.zig").writeByte;
 
 const isOptional = @import("utils.zig").isOptional;
 const NonOptional = @import("utils.zig").NonOptional;
@@ -9,7 +10,7 @@ pub fn getNullSize() usize {
 }
 
 pub fn packNull(writer: *std.Io.Writer) !void {
-    try writer.writeByte(hdrs.NIL);
+    try writeByte(writer, hdrs.NIL);
 }
 
 /// Consumes a nil header if the next value is one, reporting whether it did and

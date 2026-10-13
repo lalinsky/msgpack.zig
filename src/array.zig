@@ -1,5 +1,6 @@
 const std = @import("std");
 const hdrs = @import("headers.zig");
+const writeByte = @import("utils.zig").writeByte;
 
 const NonOptional = @import("utils.zig").NonOptional;
 const isOptional = @import("utils.zig").isOptional;
@@ -27,7 +28,7 @@ pub fn sizeOfPackedArrayHeader(len: usize) !usize {
 
 pub fn packArrayHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= hdrs.FIXARRAY_MAX - hdrs.FIXARRAY_MIN) {
-        try writer.writeByte(hdrs.FIXARRAY_MIN + @as(u8, @intCast(len)));
+        try writeByte(writer, hdrs.FIXARRAY_MIN + @as(u8, @intCast(len)));
     } else if (len <= std.math.maxInt(u16)) {
         try packHeaderAndInt(writer, hdrs.ARRAY16, u16, @intCast(len));
     } else if (len <= std.math.maxInt(u32)) {

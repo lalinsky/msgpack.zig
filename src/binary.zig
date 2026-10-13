@@ -8,6 +8,7 @@ const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
+const writeAll = @import("utils.zig").writeAll;
 const unpackIntValue = @import("int.zig").unpackIntValue;
 const readSliceFast = @import("utils.zig").readSliceFast;
 const unpackShortIntValue = @import("int.zig").unpackShortIntValue;
@@ -54,7 +55,7 @@ pub fn unpackBinaryHeader(reader: *std.Io.Reader, comptime MaybeOptionalType: ty
 pub fn packBinary(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T) !void {
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
     try packBinaryHeader(writer, value.len);
-    try writer.writeAll(value);
+    try writeAll(writer, value);
 }
 
 pub fn unpackBinary(reader: *std.Io.Reader, allocator: std.mem.Allocator) ![]u8 {

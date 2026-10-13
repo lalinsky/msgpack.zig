@@ -425,6 +425,93 @@ test "skip a value larger than the reader buffer" {
     try std.testing.expectEqual(@as(u8, 42), try unpackInt(&trickle.reader, u8));
 }
 
+/// A writer that moves everything out of its buffer on every drain. With a
+/// buffer smaller than the values written to it, the encoder has to take the
+/// paths for when a value does not fit, which a large `Writer.fixed` never does.
+const DrainingWriter = struct {
+    allocator: Allocator,
+    out: std.ArrayList(u8) = .empty,
+    writer: std.Io.Writer,
+
+    fn init(allocator: Allocator, buffer: []u8) DrainingWriter {
+        return .{
+            .allocator = allocator,
+            .writer = .{ .vtable = &.{ .drain = drain }, .buffer = buffer },
+        };
+    }
+
+    fn deinit(self: *DrainingWriter) void {
+        self.out.deinit(self.allocator);
+    }
+
+    fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+        const self: *DrainingWriter = @fieldParentPtr("writer", w);
+        self.out.appendSlice(self.allocator, w.buffered()) catch return error.WriteFailed;
+        w.end = 0;
+        var n: usize = 0;
+        for (data[0 .. data.len - 1]) |bytes| {
+            self.out.appendSlice(self.allocator, bytes) catch return error.WriteFailed;
+            n += bytes.len;
+        }
+        const pattern = data[data.len - 1];
+        for (0..splat) |_| {
+            self.out.appendSlice(self.allocator, pattern) catch return error.WriteFailed;
+            n += pattern.len;
+        }
+        return n;
+    }
+};
+
+test "encode through a writer whose buffer is smaller than a value" {
+    const Inner = struct { flag: bool, ratio: f32 };
+    const Value = struct {
+        none: ?u8,
+        yes: bool,
+        fix: u8,
+        neg: i8,
+        u_8: u8,
+        u_16: u16,
+        u_32: u32,
+        u_64: u64,
+        i_16: i16,
+        i_64: i64,
+        f_64: f64,
+        short: []const u8,
+        long: []const u8,
+        list: []const u32,
+        inner: Inner,
+    };
+    const value = Value{
+        .none = null,
+        .yes = true,
+        .fix = 7,
+        .neg = -3,
+        .u_8 = 200,
+        .u_16 = 0xbeef,
+        .u_32 = 0xdead_beef,
+        .u_64 = 0xdead_beef_cafe_1234,
+        .i_16 = -1000,
+        .i_64 = -0x1234_5678_9abc,
+        .f_64 = 3.14159,
+        .short = "hi",
+        .long = "a string that is longer than thirty one bytes",
+        .list = &.{ 1, 300, 70000 },
+        .inner = .{ .flag = false, .ratio = 0.5 },
+    };
+
+    var encoded: [512]u8 = undefined;
+    const expected = try encodeToBuffer(value, &encoded);
+
+    for (1..12) |buffer_len| {
+        var buffer: [12]u8 = undefined;
+        var draining = DrainingWriter.init(std.testing.allocator, buffer[0..buffer_len]);
+        defer draining.deinit();
+        try encode(value, &draining.writer);
+        try draining.writer.flush();
+        try std.testing.expectEqualSlices(u8, expected, draining.out.items);
+    }
+}
+
 test "encode/decode" {
     const Message = struct {
         name: []const u8,
