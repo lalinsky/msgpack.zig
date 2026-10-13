@@ -1,5 +1,6 @@
 const std = @import("std");
 const hdrs = @import("headers.zig");
+const writeByte = @import("utils.zig").writeByte;
 
 const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
@@ -78,10 +79,10 @@ pub fn packInt(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T)
 
     if (is_signed) {
         if (value >= -32 and value <= -1) {
-            try writer.writeByte(@bitCast(@as(i8, @intCast(value))));
+            try writeByte(writer, @bitCast(@as(i8, @intCast(value))));
             return;
         } else if (value >= 0 and value <= 127) {
-            try writer.writeByte(@bitCast(@as(u8, @intCast(value))));
+            try writeByte(writer, @bitCast(@as(u8, @intCast(value))));
             return;
         }
         if (bits == 8 or value >= std.math.minInt(i8) and value <= std.math.maxInt(i8)) {
@@ -99,7 +100,7 @@ pub fn packInt(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null: T)
         @compileError(std.fmt.comptimePrint("Unsupported signed int with {d} bits", .{type_info.int.bits}));
     } else {
         if (value <= 127) {
-            return writer.writeByte(@bitCast(@as(u8, @intCast(value))));
+            return writeByte(writer, @bitCast(@as(u8, @intCast(value))));
         }
         if (bits == 8 or value <= std.math.maxInt(u8)) {
             return packFixedSizeInt(writer, u8, @intCast(value));

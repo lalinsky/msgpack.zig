@@ -1,5 +1,6 @@
 const std = @import("std");
 const hdrs = @import("headers.zig");
+const writeByte = @import("utils.zig").writeByte;
 
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
@@ -31,7 +32,7 @@ pub fn packBool(writer: *std.Io.Writer, value_or_maybe_null: anytype) !void {
     const T = forceBoolType(value_or_maybe_null);
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
-    try writer.writeByte(if (value) hdrs.TRUE else hdrs.FALSE);
+    try writeByte(writer, if (value) hdrs.TRUE else hdrs.FALSE);
 }
 
 pub fn unpackBool(reader: *std.Io.Reader, comptime T: type) !T {

@@ -22,17 +22,37 @@ test isOptional {
     try std.testing.expect(!isOptional(u32));
 }
 
-/// Reserves `len` bytes of the writer's buffer, or returns null if it does not
-/// fit. Keeps `len` comptime-known so stores through the result lower to
-/// immediate stores instead of a `memcpy` call. Callers must fill the result.
-pub inline fn reserveArray(writer: *std.Io.Writer, comptime len: usize) ?*[len]u8 {
-    if (writer.end + len <= writer.buffer.len) {
+/// Like `Writer.writeByte`, but with the drain moved out of line, which keeps
+/// the function small enough to inline into every caller.
+pub fn writeByte(writer: *std.Io.Writer, byte: u8) !void {
+    if (writer.end < writer.buffer.len) {
         @branchHint(.likely);
-        const dst = writer.buffer[writer.end..][0..len];
-        writer.end += len;
-        return dst;
+        writer.buffer[writer.end] = byte;
+        writer.end += 1;
+        return;
     }
-    return null;
+    return writeAllSlow(writer, &.{byte});
+}
+
+/// Copies `bytes` into the writer's buffer when they fit, and falls back to
+/// `Writer.writeAll` otherwise. `Writer.writeAll` loops over `write`, so the
+/// copy goes through an out-of-line `memcpy` even for a few bytes; checking for
+/// room first lets the copy inline.
+pub fn writeAll(writer: *std.Io.Writer, bytes: []const u8) !void {
+    if (writer.end + bytes.len <= writer.buffer.len) {
+        @branchHint(.likely);
+        @memcpy(writer.buffer[writer.end..][0..bytes.len], bytes);
+        writer.end += bytes.len;
+        return;
+    }
+    return writeAllSlow(writer, bytes);
+}
+
+/// The fallback of the helpers above, for when the bytes do not fit the
+/// buffer. Kept out of line so the fast paths stay small enough to inline.
+pub noinline fn writeAllSlow(writer: *std.Io.Writer, bytes: []const u8) std.Io.Writer.Error!void {
+    @branchHint(.cold);
+    return writer.writeAll(bytes);
 }
 
 /// Reads a big-endian `T` from the reader. `Reader.takeInt` rebases, which
@@ -73,16 +93,19 @@ pub inline fn eqlLiteral(comptime name: []const u8, value: []const u8) bool {
 /// store when the writer's buffer has room, and as a single `writeAll`
 /// otherwise. Never splits the header from its payload across a drain.
 pub fn packHeaderAndInt(writer: *std.Io.Writer, header: u8, comptime T: type, value: T) !void {
-    const size = @sizeOf(T);
-    if (reserveArray(writer, 1 + size)) |dst| {
+    const len = 1 + @sizeOf(T);
+    if (writer.end + len <= writer.buffer.len) {
+        @branchHint(.likely);
+        const dst = writer.buffer[writer.end..][0..len];
         dst[0] = header;
-        std.mem.writeInt(T, dst[1..][0..size], value, .big);
+        std.mem.writeInt(T, dst[1..], value, .big);
+        writer.end += len;
         return;
     }
-    var buf: [1 + size]u8 = undefined;
+    var buf: [len]u8 = undefined;
     buf[0] = header;
-    std.mem.writeInt(T, buf[1..][0..size], value, .big);
-    try writer.writeAll(&buf);
+    std.mem.writeInt(T, buf[1..], value, .big);
+    return writeAllSlow(writer, &buf);
 }
 
 var no_allocator_dummy: u8 = 0;
