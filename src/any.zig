@@ -23,6 +23,9 @@ const packArray = @import("array.zig").packArray;
 const unpackArray = @import("array.zig").unpackArray;
 const unpackFixedArray = @import("array.zig").unpackFixedArray;
 
+const unpackNullIfPresent = @import("null.zig").unpackNullIfPresent;
+const isOptional = @import("utils.zig").isOptional;
+
 const packStruct = @import("struct.zig").packStruct;
 const unpackStruct = @import("struct.zig").unpackStruct;
 
@@ -79,6 +82,7 @@ pub fn packAny(writer: *std.Io.Writer, value: anytype) !void {
                     },
                 }
             } else if (ptr_info.size == .one) {
+                if (comptime isContainer(ptr_info.child)) return packPointee(writer, value);
                 return packAny(writer, value.*);
             }
         },
@@ -119,11 +123,45 @@ pub fn unpackAny(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime 
                 } else {
                     return unpackArray(reader, allocator, T);
                 }
+            } else if (ptr_info.size == .one) {
+                if (comptime isContainer(ptr_info.child)) return unpackPointerToContainer(reader, allocator, T);
+                return unpackPointer(reader, allocator, T);
             }
         },
         else => {},
     }
     @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
+}
+
+/// A struct or union reached through a pointer may be recursive, holding a
+/// pointer to its own type. Its inferred error set would then depend on itself,
+/// which Zig rejects as a dependency loop, so the recursion through such a
+/// pointer goes through a function with an explicit error set.
+fn isContainer(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct", .@"union" => true,
+        else => false,
+    };
+}
+
+fn packPointee(writer: *std.Io.Writer, value: anytype) anyerror!void {
+    return packAny(writer, value.*);
+}
+
+fn unpackPointerToContainer(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) anyerror!T {
+    return unpackPointer(reader, allocator, T);
+}
+
+/// Allocates the pointee and unpacks into it. This is what recursive types
+/// need, such as a node that holds an optional pointer to another node.
+fn unpackPointer(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
+    if (isOptional(T) and try unpackNullIfPresent(reader)) return null;
+
+    const Child = @typeInfo(NonOptional(T)).pointer.child;
+    const ptr = try allocator.create(Child);
+    errdefer allocator.destroy(ptr);
+    ptr.* = try unpackAny(reader, allocator, Child);
+    return ptr;
 }
 
 test "packAny/unpackAny: bool" {
@@ -334,6 +372,37 @@ test "packAny/unpackAny: fixed array" {
 
     var reader = std.Io.Reader.fixed(writer.buffered());
     try std.testing.expectEqual([2]u16{ 300, 7 }, try unpackAny(&reader, std.testing.allocator, [2]u16));
+}
+
+test "packAny/unpackAny: pointer" {
+    var buffer: [16]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    const value: u32 = 1234;
+    try packAny(&writer, &value);
+
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    const ptr = try unpackAny(&reader, std.testing.allocator, *const u32);
+    defer std.testing.allocator.destroy(ptr);
+    try std.testing.expectEqual(1234, ptr.*);
+}
+
+test "packAny/unpackAny: recursive struct through an optional pointer" {
+    const Node = struct {
+        value: u32,
+        next: ?*@This() = null,
+    };
+    var buffer: [32]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var tail: Node = .{ .value = 2 };
+    try packAny(&writer, Node{ .value = 1, .next = &tail });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    const head = try unpackAny(&reader, arena.allocator(), Node);
+    try std.testing.expectEqual(1, head.value);
+    try std.testing.expectEqual(2, head.next.?.value);
+    try std.testing.expectEqual(null, head.next.?.next);
 }
 
 test "packAny/unpackAny: String struct" {
