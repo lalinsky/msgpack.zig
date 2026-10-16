@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Support for Zig 0.17, alongside 0.16
+- Decoding fixed-size arrays (`[N]T`), which could already be encoded
+- Decoding single-item pointers (`*T`, `?*T`), including recursive types; a type holding a pointer to a struct or union decodes and encodes with `anyerror`
+
+### Changed
+- Encoding writes straight into the writer's buffer when there is room, and keeps the drain path out of line, which is about 13% cheaper on a typical struct and 37% on an array of integers
+- Encoding a struct is about 25% cheaper again, by telling the compiler that writing into the buffer cannot change the writer itself
+
 ## [0.9.0] - 2026-09-05
 
 ### Changed

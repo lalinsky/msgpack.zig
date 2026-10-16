@@ -1,4 +1,5 @@
 const std = @import("std");
+const compat = @import("compat.zig");
 const hdrs = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
@@ -61,7 +62,7 @@ pub const default_struct_format = StructFormat{
     },
 };
 
-fn isStructFieldUsed(field: std.builtin.Type.StructField, value: anytype, opts: StructAsMapOptions) bool {
+fn isStructFieldUsed(field: compat.StructField, value: anytype, opts: StructAsMapOptions) bool {
     const field_type_info = @typeInfo(field.type);
     const field_value = @field(value, field.name);
 
@@ -84,7 +85,7 @@ fn isStructFieldUsed(field: std.builtin.Type.StructField, value: anytype, opts: 
     return true;
 }
 
-fn countUsedStructFields(comptime fields: []const std.builtin.Type.StructField, value: anytype, opts: StructAsMapOptions) u16 {
+fn countUsedStructFields(comptime fields: []const compat.StructField, value: anytype, opts: StructAsMapOptions) u16 {
     var used_field_count: u16 = 0;
     inline for (fields) |field| {
         if (isStructFieldUsed(field, value, opts)) {
@@ -99,8 +100,7 @@ fn strPrefix(src: []const u8, len: usize) []const u8 {
 }
 
 pub fn packStructAsMap(writer: *std.Io.Writer, comptime T: type, value: T, comptime opts: StructAsMapOptions) !void {
-    const type_info = @typeInfo(T);
-    const fields = type_info.@"struct".fields;
+    const fields = comptime compat.structFields(T);
     const FieldEnum = std.meta.FieldEnum(T);
 
     try packMapHeader(writer, countUsedStructFields(fields, value, opts));
@@ -128,8 +128,7 @@ pub fn packStructAsMap(writer: *std.Io.Writer, comptime T: type, value: T, compt
 }
 
 pub fn packStructAsArray(writer: *std.Io.Writer, comptime T: type, value: T, comptime opts: StructAsArrayOptions) !void {
-    const type_info = @typeInfo(T);
-    const fields = type_info.@"struct".fields;
+    const fields = comptime compat.structFields(T);
 
     try packArrayHeader(writer, fields.len);
 
@@ -167,11 +166,10 @@ pub fn packStruct(writer: *std.Io.Writer, comptime T: type, value_or_maybe_null:
 
 pub fn unpackStructFromMapBody(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type, field_count: u16, comptime opts: StructAsMapOptions) !T {
     const Type = NonOptional(T);
-    const type_info = @typeInfo(Type);
-    const fields = type_info.@"struct".fields;
+    const fields = comptime compat.structFields(Type);
     const FieldEnum = std.meta.FieldEnum(Type);
 
-    var fields_seen = std.bit_set.StaticBitSet(fields.len).initEmpty();
+    var fields_seen = std.bit_set.StaticBitSet(fields.len).empty;
 
     var result: Type = undefined;
 
@@ -269,8 +267,7 @@ pub fn unpackStructAsArray(reader: *std.Io.Reader, allocator: std.mem.Allocator,
         try unpackArrayHeader(reader, u16);
 
     const Type = NonOptional(T);
-    const type_info = @typeInfo(Type);
-    const fields = type_info.@"struct".fields;
+    const fields = comptime compat.structFields(Type);
 
     if (len != fields.len) {
         return error.InvalidFormat;

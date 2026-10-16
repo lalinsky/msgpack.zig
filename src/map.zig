@@ -1,5 +1,6 @@
 const std = @import("std");
 const hdrs = @import("headers.zig");
+const writeByte = @import("utils.zig").writeByte;
 
 const NonOptional = @import("utils.zig").NonOptional;
 const Optional = @import("utils.zig").Optional;
@@ -28,7 +29,7 @@ pub fn sizeOfPackedMapHeader(len: usize) !usize {
 
 pub fn packMapHeader(writer: *std.Io.Writer, len: usize) !void {
     if (len <= hdrs.FIXMAP_MAX - hdrs.FIXMAP_MIN) {
-        try writer.writeByte(hdrs.FIXMAP_MIN + @as(u8, @intCast(len)));
+        try writeByte(writer, hdrs.FIXMAP_MIN + @as(u8, @intCast(len)));
     } else if (len <= std.math.maxInt(u16)) {
         try packHeaderAndInt(writer, hdrs.MAP16, u16, @intCast(len));
     } else if (len <= std.math.maxInt(u32)) {
