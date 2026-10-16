@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Support for Zig 0.17, alongside 0.16
+- Decoding fixed-size arrays (`[N]T`), which could already be encoded
+- Decoding single-item pointers (`*T`, `?*T`), including recursive types; a type holding a pointer to a struct or union decodes and encodes with `anyerror`
 
 ### Changed
 - Encoding writes straight into the writer's buffer when there is room, and keeps the drain path out of line, which is about 13% cheaper on a typical struct and 37% on an array of integers
