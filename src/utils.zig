@@ -62,15 +62,30 @@ pub noinline fn writeAllSlow(writer: *std.Io.Writer, bytes: []const u8) std.Io.W
     return writer.writeAll(bytes);
 }
 
-/// Reads a big-endian `T` from the reader. `Reader.takeInt` rebases, which
-/// asserts the reader's buffer can hold `@sizeOf(T)`; report that as an error
-/// rather than letting the assert fire.
+/// Reads a big-endian `T` from the reader. When the bytes are already
+/// buffered, which is always the case when decoding from a slice, this is one
+/// compare and a load. `Reader.takeInt` would check the same thing, but it
+/// rebases on a miss, which asserts the reader's buffer can hold `@sizeOf(T)`,
+/// so it needed a check of the buffer's capacity in front of it as well.
 pub inline fn takeInt(reader: *std.Io.Reader, comptime T: type) !T {
-    if (reader.buffer.len < @divExact(@bitSizeOf(T), 8)) {
-        @branchHint(.unlikely);
-        return error.ReaderBufferTooSmall;
+    const n = @divExact(@bitSizeOf(T), 8);
+    const buffered = reader.buffered();
+    if (buffered.len >= n) {
+        @branchHint(.likely);
+        reader.toss(n);
+        return std.mem.readInt(T, buffered[0..n], .big);
     }
-    return reader.takeInt(T, .big);
+    return takeIntSlow(reader, T);
+}
+
+/// The fallback of `takeInt`, for when the bytes are not all buffered. Copying
+/// them out with `readSliceAll` works across refills, so a reader whose buffer
+/// is smaller than `T` still works.
+noinline fn takeIntSlow(reader: *std.Io.Reader, comptime T: type) !T {
+    @branchHint(.cold);
+    var bytes: [@divExact(@bitSizeOf(T), 8)]u8 = undefined;
+    try reader.readSliceAll(&bytes);
+    return std.mem.readInt(T, &bytes, .big);
 }
 
 /// Copies `dest.len` bytes out of the reader. When they are already buffered,

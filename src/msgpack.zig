@@ -278,7 +278,8 @@ pub const SliceDecodeError = error{
 pub const DecodeError = SliceDecodeError || error{
     /// The reader failed, and its own error says why.
     ReadFailed,
-    /// A value had to be buffered whole, and the reader's buffer is smaller.
+    /// A string had to be buffered whole, such as a struct field name, and
+    /// the reader's buffer is smaller.
     ReaderBufferTooSmall,
 };
 
@@ -453,21 +454,28 @@ test "decode from a streaming reader whose buffer holds the largest value" {
     }
 }
 
-test "decode from a streaming reader with too small a buffer errors, never panics" {
-    const Numeric = struct { id: u64, seq: i32, ratio: f64, ok: bool };
+test "decode numbers from a streaming reader whose buffer is smaller than them" {
+    const Numeric = struct {
+        id: u64,
+        seq: i32,
+        ratio: f64,
+        ok: bool,
+
+        pub fn msgpackFormat() StructFormat {
+            return .{ .as_array = .{} };
+        }
+    };
     const value = Numeric{ .id = 0xdead_beef_cafe_1234, .seq = -4242, .ratio = 3.14159, .ok = true };
 
     var encoded: [64]u8 = undefined;
     const bytes = try encodeToBuffer(value, &encoded);
 
-    // The u64 payload needs 8 buffered bytes; anything smaller cannot rebase.
+    // The u64 and f64 payloads are 8 bytes, more than any of these buffers.
     for ([_]usize{ 1, 2, 4, 7 }) |buffer_len| {
         var buffer: [8]u8 = undefined;
         var trickle = TrickleReader.init(buffer[0..buffer_len], bytes);
-        try std.testing.expectError(
-            error.ReaderBufferTooSmall,
-            decodeLeaky(Numeric, std.testing.allocator, &trickle.reader),
-        );
+        const decoded = try decodeLeaky(Numeric, std.testing.allocator, &trickle.reader);
+        try std.testing.expectEqualDeep(value, decoded);
     }
 }
 

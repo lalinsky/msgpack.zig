@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Encoding writes straight into the writer's buffer when there is room, and keeps the drain path out of line, which is about 13% cheaper on a typical struct and 37% on an array of integers
 - Encoding a struct is about 25% cheaper again, by telling the compiler that writing into the buffer cannot change the writer itself
 
+### Fixed
+- Decoding numbers from a streaming reader whose buffer is smaller than the number (under 8 bytes) works, instead of failing with `error.ReaderBufferTooSmall`; that error is now only for strings that have to be buffered whole, such as struct field names
+
 ## [0.9.0] - 2026-09-05
 
 ### Changed
