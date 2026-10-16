@@ -21,6 +21,7 @@ const Binary = @import("binary.zig").Binary;
 
 const packArray = @import("array.zig").packArray;
 const unpackArray = @import("array.zig").unpackArray;
+const unpackFixedArray = @import("array.zig").unpackFixedArray;
 
 const packStruct = @import("struct.zig").packStruct;
 const unpackStruct = @import("struct.zig").unpackStruct;
@@ -110,6 +111,7 @@ pub fn unpackAny(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime 
         .@"struct" => return unpackStruct(reader, allocator, T),
         .@"union" => return unpackUnion(reader, allocator, T),
         .@"enum" => return unpackEnum(reader, T),
+        .array => return unpackFixedArray(reader, allocator, T),
         .pointer => |ptr_info| {
             if (ptr_info.size == .slice) {
                 if (isString(T)) {
@@ -323,6 +325,15 @@ test "packAny/unpackAny: optional union" {
         const result = try unpackAny(&reader, std.testing.allocator, ?Value);
         try std.testing.expectEqualDeep(value, result);
     }
+}
+
+test "packAny/unpackAny: fixed array" {
+    var buffer: [16]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packAny(&writer, [2]u16{ 300, 7 });
+
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    try std.testing.expectEqual([2]u16{ 300, 7 }, try unpackAny(&reader, std.testing.allocator, [2]u16));
 }
 
 test "packAny/unpackAny: String struct" {

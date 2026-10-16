@@ -9,6 +9,8 @@ const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 const packHeaderAndInt = @import("utils.zig").packHeaderAndInt;
+const readSliceFast = @import("utils.zig").readSliceFast;
+const unpackStringHeader = @import("string.zig").unpackStringHeader;
 const unpackIntValue = @import("int.zig").unpackIntValue;
 
 const packAny = @import("any.zig").packAny;
@@ -83,6 +85,29 @@ pub fn unpackArray(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptim
     return data;
 }
 
+/// Unpacks a fixed-size array, the counterpart of how `packAny` writes one: an
+/// array of exactly `N` items, or for `[N]u8` a string of exactly `N` bytes.
+pub fn unpackFixedArray(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) !T {
+    const info = @typeInfo(NonOptional(T)).array;
+    const unpackHeader = if (info.child == u8) unpackStringHeader else unpackArrayHeader;
+
+    const len = if (isOptional(T))
+        try unpackHeader(reader, ?u32) orelse return null
+    else
+        try unpackHeader(reader, u32);
+    if (len != info.len) return error.InvalidFormat;
+
+    var result: NonOptional(T) = undefined;
+    if (info.child == u8) {
+        try readSliceFast(reader, &result);
+    } else {
+        for (&result) |*item| {
+            item.* = try unpackAny(reader, allocator, info.child);
+        }
+    }
+    return result;
+}
+
 pub fn unpackArrayInto(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime Item: type, buffer: []Item) ![]Item {
     const len = try unpackArrayHeader(reader, u32);
 
@@ -129,6 +154,35 @@ test "packArray: null" {
     var writer = std.Io.Writer.fixed(&buffer);
     try packArray(&writer, ?[]const u8, null);
     try std.testing.expectEqualSlices(u8, &packed_null, writer.buffered());
+}
+
+test "unpackFixedArray: round trip" {
+    var buffer: [32]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packAny(&writer, [2]f64{ 1.5, -2.25 });
+
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    try std.testing.expectEqual([2]f64{ 1.5, -2.25 }, try unpackFixedArray(&reader, std.testing.allocator, [2]f64));
+}
+
+test "unpackFixedArray: [N]u8 is a string, like packAny writes it" {
+    var buffer: [16]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    try packAny(&writer, [3]u8{ 'a', 'b', 'c' });
+
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    try std.testing.expectEqual([3]u8{ 'a', 'b', 'c' }, try unpackFixedArray(&reader, std.testing.allocator, [3]u8));
+}
+
+test "unpackFixedArray: null" {
+    var reader = std.Io.Reader.fixed(&packed_null);
+    try std.testing.expectEqual(null, try unpackFixedArray(&reader, std.testing.allocator, ?[3]u32));
+}
+
+test "unpackFixedArray: wrong length" {
+    const packed_two = [_]u8{ 0x92, 0x01, 0x02 };
+    var reader = std.Io.Reader.fixed(&packed_two);
+    try std.testing.expectError(error.InvalidFormat, unpackFixedArray(&reader, std.testing.allocator, [3]u32));
 }
 
 test "sizeOfPackedArrayHeader: array16 boundary" {
