@@ -419,6 +419,23 @@ test "reading a sequence of messages: a clean end, and a message cut short" {
     }
 }
 
+test "decode a recursive type" {
+    const Node = struct {
+        value: u32,
+        next: ?*@This() = null,
+    };
+    var tail: Node = .{ .value = 2 };
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
+    try encode(Node{ .value = 1, .next = &tail }, &aw.writer);
+
+    const decoded = try decodeFromSlice(Node, std.testing.allocator, aw.written());
+    defer decoded.deinit();
+    try std.testing.expectEqual(1, decoded.value.value);
+    try std.testing.expectEqual(2, decoded.value.next.?.value);
+    try std.testing.expectEqual(null, decoded.value.next.?.next);
+}
+
 test "decode from a streaming reader whose buffer holds the largest value" {
     const Numeric = struct { id: u64, seq: i32, ratio: f64, ok: bool };
     const value = Numeric{ .id = 0xdead_beef_cafe_1234, .seq = -4242, .ratio = 3.14159, .ok = true };

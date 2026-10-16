@@ -24,6 +24,7 @@ const unpackArray = @import("array.zig").unpackArray;
 const unpackFixedArray = @import("array.zig").unpackFixedArray;
 
 const unpackNullIfPresent = @import("null.zig").unpackNullIfPresent;
+const DecodeError = @import("msgpack.zig").DecodeError;
 const isOptional = @import("utils.zig").isOptional;
 
 const packStruct = @import("struct.zig").packStruct;
@@ -136,7 +137,8 @@ pub fn unpackAny(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime 
 /// A struct or union reached through a pointer may be recursive, holding a
 /// pointer to its own type. Its inferred error set would then depend on itself,
 /// which Zig rejects as a dependency loop, so the recursion through such a
-/// pointer goes through a function with an explicit error set.
+/// pointer goes through a function with an explicit error set: `DecodeError`
+/// for unpacking, and `anyerror` for packing, which has no explicit set yet.
 fn isContainer(comptime T: type) bool {
     return switch (@typeInfo(T)) {
         .@"struct", .@"union" => true,
@@ -148,7 +150,7 @@ fn packPointee(writer: *std.Io.Writer, value: anytype) anyerror!void {
     return packAny(writer, value.*);
 }
 
-fn unpackPointerToContainer(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) anyerror!T {
+fn unpackPointerToContainer(reader: *std.Io.Reader, allocator: std.mem.Allocator, comptime T: type) DecodeError!T {
     return unpackPointer(reader, allocator, T);
 }
 
