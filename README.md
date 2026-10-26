@@ -15,7 +15,7 @@ Requires Zig 0.16 or 0.17.
 1) Add msgpack.zig as a dependency in your `build.zig.zon`:
 
 ```bash
-zig fetch --save "git+https://github.com/lalinsky/msgpack.zig?ref=v0.9.0"
+zig fetch --save "git+https://github.com/lalinsky/msgpack.zig?ref=v0.10.0"
 ```
 
 2) In your `build.zig`, add the `msgpack` module as a dependency you your program:
